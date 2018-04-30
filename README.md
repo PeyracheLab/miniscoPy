@@ -58,7 +58,7 @@ If it does not work, the best strategy is to start a conda environment and do:
 ```
 conda install av -c conda-forge
 ```
-If you are an old grumpy dude that cannot stand conda environment and has already recompiled a linux kernel, the ultimate strategy is still to compile the lib in a conda environment and then to link it by hand. 
+If you are a grumpy dude that cannot stand conda environment and has already recompiled a linux kernel, the ultimate strategy is still to compile the lib in a conda environment and then to link it by hand. 
 
 Additional packages for running the test with generated data:
 ```
@@ -70,6 +70,7 @@ pip3 install --user brian2 xgboost
 To install miniscoPy :
 
 ```
+python3 setup.py build_ext -i
 python3 setup.py install --user
 ```
 
