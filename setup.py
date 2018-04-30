@@ -47,7 +47,7 @@ setup(
     ],
     keywords='fluorescence calcium ca imaging deconvolution ROI identification miniscope',
     packages=find_packages(exclude=['use_cases', 'use_cases.*']),
-    data_files=[('', ['LICENSE.txt']),
+    data_files=[('', ['LICENSE.md']),
                 ('', ['README.md'])],
     install_requires=[''],
     ext_modules=cythonize(ext_modules)

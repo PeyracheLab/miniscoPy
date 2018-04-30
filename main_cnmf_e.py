@@ -14,17 +14,16 @@ from miniscopy import setup_cluster, CNMFE
 #############################################################################################################
 # DOWNLOADING AN EXAMPLE FILE IF NOT ALREADY PRESENT
 #############################################################################################################
-folder_name = '/example_movies'	
+folder_name = 'example_movies'
 files = glob.glob(folder_name+'/*.avi')
-if len(files) == 0:		
-	import urllib.request
-	url = "https://www.dropbox.com/s/0x3twp8bidl9svu/msCam1.avi?dl=1"
-	with urllib.request.urlopen(url) as response, open("msCam1.avi", 'wb') as out_file:
-    	data = response.read()
-    	out_file.write(data)
-	files = glob.glob(folder_name+'/*.avi')
-	if len(files) == 0: print("No avi files found, please provide one at least")
-
+if len(files) == 0:
+    import urllib.request
+    url = "https://www.dropbox.com/s/0x3twp8bidl9svu/msCam1.avi?dl=1"
+    with urllib.request.urlopen(url) as response, open(folder_name+"/msCam1.avi", 'wb') as out_file:
+        data = response.read()
+        out_file.write(data)
+    files = glob.glob(folder_name+'/*.avi')
+    if len(files) == 0: print("No avi files found, please provide one at least")
 
 #############################################################################################################
 # LOADING PARAMETERS
