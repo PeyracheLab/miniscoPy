@@ -6,8 +6,8 @@ import numpy as np
 
 # compile with:     python setup.py build_ext -i
 # clean up with:    python setup.py clean --all
-ext_modules = [Extension("miniscopy.cnmfe.oasis",
-                         sources=["miniscopy/cnmfe/oasis.pyx"],
+ext_modules = [Extension("miniscopy.cnmf_e.oasis",
+                         sources=["miniscopy/cnmf_e/oasis.pyx"],
                          include_dirs=[np.get_include()],
                          language="c++")]
 
