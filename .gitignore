@@ -1,0 +1,6 @@
+*.pyc
+/dist/
+/*.egg-info
+/.ipynb_checkpoints/*
+*.hdf5
+*.avi
