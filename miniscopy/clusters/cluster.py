@@ -11,8 +11,6 @@ from builtins import map
 from builtins import range
 import subprocess
 import time
-import ipyparallel
-from ipyparallel import Client
 import shutil
 import glob
 import shlex
@@ -48,23 +46,23 @@ def setup_cluster(backend='multiprocessing', n_processes=None, single_thread=Fal
     else:
         sys.stdout.flush()
 
-        if backend == 'SLURM':
-            try:
-                stop_server()
-            except:
-                print('Nothing to stop')
-            slurm_script = 'SLURM/slurmStart.sh'
-            start_server(slurm_script=slurm_script, ncpus=n_processes)
-            pdir, profile = os.environ['IPPPDIR'], os.environ['IPPPROFILE']
-            c = Client(ipython_dir=pdir, profile=profile)
-        elif backend == 'ipyparallel':
-            stop_server()
-            start_server(ncpus=n_processes)
-            c = Client()
-            print(('Using ' + str(len(c)) + ' processes'))
-            dview = c[:len(c)]
+        # if backend == 'SLURM':
+        #     try:
+        #         stop_server()
+        #     except:
+        #         print('Nothing to stop')
+        #     slurm_script = 'SLURM/slurmStart.sh'
+        #     start_server(slurm_script=slurm_script, ncpus=n_processes)
+        #     pdir, profile = os.environ['IPPPDIR'], os.environ['IPPPROFILE']
+        #     c = Client(ipython_dir=pdir, profile=profile)
+        # elif backend == 'ipyparallel':
+        #     stop_server()
+        #     start_server(ncpus=n_processes)
+        #     c = Client()
+        #     print(('Using ' + str(len(c)) + ' processes'))
+        #     dview = c[:len(c)]
 
-        elif (backend == 'multiprocessing') or (backend == 'local'):
+        if (backend == 'multiprocessing') or (backend == 'local'):
             if len(multiprocessing.active_children()) > 0:
                 raise Exception(
                     'A cluster is already runnning. Terminate with dview.terminate() if you want to restart.')
