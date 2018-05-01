@@ -31,7 +31,8 @@ To take a glimpse at the package, you can look at two Jupyter notebooks :
 
 ### Prerequisites
 
-This installation protocol has been tested with a freshly installed Ubuntu 18.04 LTS. It is not guaranted if you have conflicting packages already installed. In this case, it may work better within a Miniconda environment.
+This installation protocol has been tested with a freshly installed Ubuntu 18.04 LTS. It is not guaranted if you have conflicting packages already installed. In this case, it may work better within a Miniconda environment (indications coming soon).
+First start with cloning and installing packages:
 
 ```
 git clone https://github.com/peyrachelab/miniscoPy
@@ -58,9 +59,9 @@ If it does not work, the best strategy is to start a conda environment and do:
 ```
 conda install av -c conda-forge
 ```
-If it still doens't work (and you cannot stand conda environment and have already recompiled a linux kernel), the ultimate strategy is to compile the lib in a Conda environment and then to link it by hand. 
+If it still doens't work (and you cannot stand Conda environment and have already recompiled a linux kernel), the ultimate strategy is to compile the lib in a Conda environment and then to link it by hand. 
 
-Brian2 and xgboost are additional packages required to run the Jupyter notebook using generated data, easy to install:
+Brian2 and xgboost are additional packages required to run the Jupyter notebook using simulated data, they are easy to install:
 ```
 pip3 install --user brian2 xgboost
 ```
