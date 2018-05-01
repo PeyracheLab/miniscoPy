@@ -24,8 +24,8 @@ Yet, the architecture of this package is almost the same as the CaImAn package. 
 ### Overview
 
 To take a glimpse at the package, you can look at two Jupyter notebooks :
-* __[main_cnmfe_e.ipynb](https://github.com/peyrachelab/miniscoPy/main_cnmf_e.py)__ for a minimal working example with actual data.
-* __[main_test_hd_generated.ipynb](https://github.com/peyrachelab/miniscoPy/main_test_hd_generated.ipynb)__ for an example with simulated data of the head-direction system (requires [BRIAN2](https://brian2.readthedocs.io/en/stable/) and [XGBoost](http://xgboost.readthedocs.io/en/latest/python/python_intro.html))
+* __[main_cnmfe_e.ipynb](main_cnmfe_e.ipynb)__ for a minimal working example with actual data.
+* __[main_test_hd_generated.ipynb](main_test_hd_generated.ipynb)__ for an example with simulated data of the head-direction system (requires [BRIAN2](https://brian2.readthedocs.io/en/stable/) and [XGBoost](http://xgboost.readthedocs.io/en/latest/python/python_intro.html))
 
 ## Getting Started
 
@@ -129,7 +129,7 @@ Besides, codes from several toolboxes are used :
 
 ## Troubleshooting
 
-Send me an email.
+Send us an email. 
 
 ## Author
 
