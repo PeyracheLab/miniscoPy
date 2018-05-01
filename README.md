@@ -58,7 +58,7 @@ If it does not work, the best strategy is to start a conda environment and do:
 ```
 conda install av -c conda-forge
 ```
-If you are a grumpy dude that cannot stand conda environment and has already recompiled a linux kernel, the ultimate strategy is still to compile the lib in a conda environment and then to link it by hand. 
+Still that doens't work and you are a grumpy dude that cannot stand conda environment and has already recompiled a linux kernel, the ultimate strategy is still to compile the lib in a conda environment and then to link it by hand. 
 
 Additional packages for running the test with generated data:
 ```
@@ -100,7 +100,6 @@ from miniscopy import CNMFE
 cnm = CNMFE(data, parameters['cnmfe'])
 cnm.fit()
 ```
-Et voila!
 
 A minimal working example can be found in [main_cnmf_e.py](main_cnmf_e.py). Another example with generated data can be found in [main_test_hd_generated.py](main_test_hd_generated.py).
 
@@ -124,6 +123,7 @@ Besides, codes from several toolboxes are used :
 * Future development
   * Integration of the great [neuroseries](https://github.com/MemDynLab/neuroseries)
   * Frame-by-frame dynamic visualization
+  * Conforming to [Neurodata Without Borders](https://www.nwb.org/)
 * 0.0.1 (Current)
   * Work in progress
 
