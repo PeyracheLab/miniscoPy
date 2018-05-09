@@ -7,11 +7,11 @@ different set of methods like ICA PCA, greedy roi
 
 """
 import os
-try:
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-    import numpy as np
-finally:
-    del os.environ['OPENBLAS_NUM_THREADS']
+# try:
+#     os.environ['OPENBLAS_NUM_THREADS'] = '1'
+import numpy as np
+# finally:
+#     del os.environ['OPENBLAS_NUM_THREADS']
 
 
 import cv2
@@ -67,9 +67,20 @@ def get_noise_fft(Y, max_num_samples_fft=3072, noise_range=[0.25,0.5], noise_met
     ind1        = ff > noise_range[0]
     ind2        = ff <= noise_range[1]
     ind         = np.logical_and(ind1, ind2)
-    psdx        = np.zeros((np.prod(dims),ind.sum()))    
-    dft         = np.fft.fft(Y[idx_frames].reshape(duration,np.prod(dims)), axis = 0)[:len(ind)][ind].T    
-    psdx        = (1./duration) * (dft.real * dft.real)+(dft.imag*dft.imag)
+    
+
+    if type(Y) is h5py._hl.dataset.Dataset:
+        psdx        = np.zeros((dims[0],dims[1],ind.sum()))
+        for i in range(dims[0]): # doing it row by row            
+            data = Y[:,i,:]
+            sample = data[idx_frames]
+            dft = np.fft.fft(sample, axis = 0)[:len(ind)][ind].T
+            psdx[i]   = (1./duration) * (dft.real * dft.real)+(dft.imag*dft.imag)
+        psdx = psdx.reshape(np.prod(dims),ind.sum())
+
+    elif type(Y) is np.ndarray:
+        dft         = np.fft.fft(Y[idx_frames].reshape(duration,np.prod(dims)), axis = 0)[:len(ind)][ind].T        
+        psdx        = (1./duration) * (dft.real * dft.real)+(dft.imag*dft.imag)
 
     if noise_method == 'mean':
         noise = np.sqrt(np.mean(psdx, axis=1))
@@ -229,37 +240,51 @@ def extract_ac(data_filtered_box_, data_raw_box, ind_ctr, patch_dims, filter_dat
 
 def local_correlations_fft(data, **kwargs):
     """Computes the correlation image for the input dataset Y using a faster FFT based method
-
-    Parameters:
-    -----------
-
-    Y:  3d
-
-    eight_neighbours: Boolean
-        Use 8 neighbors if true, and 4 if false for 3D data (default = True)
-        Use 6 neighbors for 4D data, irrespectively
-
-
-    Returns:
-    --------
-
-    Cn: d1 x d2 [x d3] matrix, cross-correlation with adjacent pixels
-
     """
-    data = data.astype('float32')
-    data -= data.mean(0)
-    datastd = data.std(0)
-    datastd[datastd == 0] = np.inf
-    data /= datastd
-    sz = np.ones((3, 3), dtype='float32')
-    sz[1, 1] = 0
+    if isinstance(data, np.ndarray):
+        data = data.astype('float32')
+        data -= data.mean(0)
+        datastd = data.std(0)
+        datastd[datastd == 0] = np.inf
+        data /= datastd
+        sz = np.ones((3, 3), dtype='float32')
+        sz[1, 1] = 0
 
-    dataconv = np.zeros_like(data)
+        dataconv = np.zeros_like(data)
 
-    for i, frame in enumerate(data):
-        dataconv[i] = cv2.filter2D(frame, -1, sz, borderType=0)
-    MASK = cv2.filter2D(np.ones(data.shape[1:], dtype = 'float32'), -1, sz, borderType=0)
-    return np.mean(dataconv*data, axis = 0) / MASK
+        for i, frame in enumerate(data):
+            dataconv[i] = cv2.filter2D(frame, -1, sz, borderType=0)
+        MASK = cv2.filter2D(np.ones(data.shape[1:], dtype = 'float32'), -1, sz, borderType=0)
+        return np.mean(dataconv*data, axis = 0) / MASK
+
+    elif isinstance(data, h5py._hl.dataset.Dataset):
+        new_data = data.parent.create_dataset('tmp', shape = data.shape, chunks = True)
+        dataconv = data.parent.create_dataset('dataconv', shape = data.shape, chunks = True)
+        data_mean = np.mean(data, 0)
+        data_std = np.std(data, 0)
+        data_std[data_std == 0] = np.inf
+        chunk_size = data.chunks[0]
+        sz = np.ones((3, 3), dtype='float32')
+        sz[1, 1] = 0        
+        corr = np.zeros(data.shape[1:])        
+        for i in range(0, data.shape[0], chunk_size):
+            tmp = data[i:i+chunk_size] - data_mean            
+            tmp = tmp / data_std
+            new_data[i:i+chunk_size,:] = tmp
+            for j, frame in enumerate(tmp):
+                dataconv[i+j] = cv2.filter2D(frame, -1, sz, borderType =0)
+        corr += np.sum(new_data[i:i+chunk_size,:,:] * dataconv[i:i+chunk_size,:,:], axis = 0)
+
+        corr /= float(data.shape[0])
+
+        MASK = cv2.filter2D(np.ones(data.shape[1:], dtype = 'float32'), -1, sz, borderType=0)
+        
+        del data.parent['tmp']
+        del data.parent['dataconv']
+
+        return corr/MASK
+
+
     
 def init_neurons_corr_pnr(Yc, dims, gSig, gSiz, thresh_init, min_corr, min_pnr, bd, min_pixel, center_psf, filter_data_centering, **kwargs):
     """
