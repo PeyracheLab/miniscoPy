@@ -71,7 +71,7 @@ def get_noise_fft(Y, max_num_samples_fft=3072, noise_range=[0.25,0.5], noise_met
 
     if type(Y) is h5py._hl.dataset.Dataset:
         psdx        = np.zeros((dims[0],dims[1],ind.sum()))
-        for i in range(dims[0]): # doing it row by row            
+        for i in tqdm(range(dims[0])): # doing it row by row            
             data = Y[:,i,:]
             sample = data[idx_frames]
             dft = np.fft.fft(sample, axis = 0)[:len(ind)][ind].T
@@ -267,7 +267,7 @@ def local_correlations_fft(data, **kwargs):
         sz = np.ones((3, 3), dtype='float32')
         sz[1, 1] = 0        
         corr = np.zeros(data.shape[1:])        
-        for i in range(0, data.shape[0], chunk_size):
+        for i in tqdm(range(0, data.shape[0], chunk_size)):
             tmp = data[i:i+chunk_size] - data_mean            
             tmp = tmp / data_std
             new_data[i:i+chunk_size,:] = tmp
@@ -543,8 +543,7 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
     new_dims = tuple(Yc.attrs['dims'])
 
     # Yc is not modified inside this function | it is not either in original cnmfe or it's a bug
-    A, C, _, _, center = init_neurons_corr_pnr(Yc, new_dims, **kwargs)    
-    # Pdb().set_trace()
+    A, C, _, _, center = init_neurons_corr_pnr(Yc, new_dims, **kwargs)        
     
     # to ease dot product between A and C, A is reshaped in (neurons, pixel) and C is (time, neurons)
     duration = Yc.shape[0]
@@ -580,10 +579,16 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
         # original size in time        
         nr = C.shape[1]        
         if tsub > 1:              
-            if nr:          
-                patch.C = patch.patch_group.create_dataset('C', data = C[np.arange(duration).repeat(tsub)][0:patch.duration], chunks = (patch.chunks[0],1))  # The calcium activities of K neurons of size (K,T)                     
+            if nr: # when doubling C matrix, it can causes a bug if odd size
+                patch.C = patch.patch_group.create_dataset('C', shape = (patch.duration,nr), chunks = (patch.chunks[0],1))
+                index = np.arange(duration).repeat(tsub)
+                if len(index) <= patch.duration:
+                    patch.C[0:len(index)] = C[index]
+                    patch.C[-1] = C[-1] # tripling the last element
+                else:
+                    patch.C[:] = C[index][0:patch.duration]
             else:
-                patch.C = patch.patch_group.create_dataset('C', data = C[np.arange(duration).repeat(tsub)][0:patch.duration])
+                patch.C = patch.patch_group.create_dataset('C', shape = (patch.duration,nr))
                 
             tmp = patch.C.value.dot(A)
             if ssub == 1:                
@@ -593,7 +598,7 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
                 B = np.zeros(tmp.shape)
                 chunk_size = patch.patch_group['Y'].chunks[0]                
                 for i in range(0, patch.duration+chunk_size,chunk_size):
-                    data = patch.patch_group['Y'][i:i+chunk_size]
+                    data = patch.patch_group['Y'][i:i+chunk_size]                    
                     for j, frame in enumerate(data):
                         Ys[i+j] = cv2.resize(frame.reshape(patch.dims), new_dims[::-1], interpolation = cv2.INTER_AREA).flatten()                    
                         B[i+j] = Ys[i+j] - tmp[i+j]

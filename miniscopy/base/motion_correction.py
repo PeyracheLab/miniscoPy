@@ -399,7 +399,8 @@ def normcorre(fnames, procs, parameters):
         chunk_movie = hdf_mov['movie'][start:start+chunk_size]
 
         # index for parrallel process of the chunk size
-        index = np.arange(chunk_size)
+        # index = np.arange(chunk_size)
+        index = np.arange(np.minimum(duration-start, chunk_size))
         splits_index = np.array_split(index, nb_splits)
 
         # to zip later                
