@@ -1,6 +1,12 @@
+*.lib
+*.exp
+*.obj
+*.pyd
 *.pyc
-/dist/
-/*.egg-info
-/.ipynb_checkpoints/*
+./dist/*
+./build/*
+oasis.cpp
+./*.egg-info
+./.ipynb_checkpoints/*
 *.hdf5
 *.avi
