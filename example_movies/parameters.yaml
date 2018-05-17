@@ -7,7 +7,7 @@ motion_correction:
   upsample_factor_grid: 1
   max_deviation_rigid: 10
   max_deviation_patch: 1
-  nb_round: 5
+  nb_round: 10
   upsample_factor: 2
   filter_size: 10
   filter_size_patch: 5

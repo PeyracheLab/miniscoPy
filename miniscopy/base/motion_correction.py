@@ -334,7 +334,7 @@ def global_correct(image, template, dims, parameters):
         sh_y_n = -(sh_y - max_dev)    
     
         
-    # print('global_correction :',index,sh_x_n,sh_y_n,avg_metric)
+    print('global_correction :',sh_x_n,sh_y_n,avg_metric)
     
     # apply shift using subpixels adjustement
     interpolation = cv2.INTER_LINEAR # TODO : ADD THE CHOICE
@@ -343,7 +343,7 @@ def global_correct(image, template, dims, parameters):
     new_image = cv2.warpAffine(image, M, dims[::-1], flags = interpolation, borderMode=cv2.BORDER_REFLECT)
     new_image = np.clip(new_image, min_, max_)
 
-    return image.flatten()
+    return new_image.flatten()
 
 def global_correct_batch(images, template, dims, parameters):
     for i, img in enumerate(images):
@@ -393,7 +393,8 @@ def normcorre(fnames, procs, parameters):
     chunk_size  = hdf_mov['movie'].chunks[0]
     chunk_starts = np.arange(0, duration, chunk_size)
     nb_splits   = os.cpu_count()    
-    
+        
+
     for start in tqdm(chunk_starts):            
         # load the chunk of the movie 
         chunk_movie = hdf_mov['movie'][start:start+chunk_size]
