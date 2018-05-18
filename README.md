@@ -179,7 +179,7 @@ This project is licensed under the GNU License - see the [LICENSE.md](LICENSE.md
 
 * Hat tip to all the contributors of the different packages used here. Would not have been possible from scratch!
 * Guillaume Etter from Sylvain Williams's lab for the miniscope calcium imaging movie example.
-
+* Thanks Denis Polygalov for troubleshooting the Windows installation.
 
 
 
