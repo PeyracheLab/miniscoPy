@@ -75,6 +75,41 @@ python3 setup.py build_ext -i
 python3 setup.py install --user
 ```
 
+### Building and testing on Windows (experimental)
+
+In order to build miniscoPy on Windows you will need Microsoft Visual Studio 2015 or 2017 installed (Community Edition is OK) and Miniconda(preferably) or Anaconda.
+
+First make sure you have conda-forge channel added to your conda installation:
+
+```
+conda config --show channels
+```
+If not - add the conda-forge channel by executing:
+
+```
+conda config --add channels conda-forge
+```
+Then create new conda environment and activate it:
+```
+conda create -n miniscoPy
+activate miniscoPy
+```
+Install minimal set of packages required for data processing (without IPython and Jupyter):
+```
+conda install av scipy pandas cython scikit-learn scikit-image h5py opencv tqdm future pyyaml psutil
+```
+CD to a directory where files of this repository located and build C extention:
+```
+python setup.py build_ext -i
+```
+Check your environment by executing all test scripts located in the "testbench" directory:
+```
+python -m unittest discover testbench
+```
+Finally, process sample data:
+```
+python main_cnmf_e.py
+```
 
 ## Deployment
 
