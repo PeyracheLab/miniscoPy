@@ -334,7 +334,7 @@ def global_correct(image, template, dims, parameters):
         sh_y_n = -(sh_y - max_dev)    
     
         
-    print('global_correction :',sh_x_n,sh_y_n,avg_metric)
+    # print('global_correction :',sh_x_n,sh_y_n,avg_metric)
     
     # apply shift using subpixels adjustement
     interpolation = cv2.INTER_LINEAR # TODO : ADD THE CHOICE
