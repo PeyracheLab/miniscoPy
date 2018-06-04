@@ -170,6 +170,7 @@ Send us an email or post an Issue.
 ## Author
 
 * Guillaume Viejo - *Initial work*
+* Elena Kerjean (Sciences Sorbonne Université)
 
 ## License
 
