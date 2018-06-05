@@ -411,7 +411,7 @@ def normcorre(fnames, procs, parameters):
                
         for j in range(parameters['nb_round']):        
             # # Do a global motion correction of the group
-            chunk_movie = map_function(procs, 'global_correct_helper', nb_splits, splits_index, list_chunk_movie, template, dims, parameters)
+            list_chunk_movie = map_function(procs, 'global_correct_helper', nb_splits, splits_index, list_chunk_movie, template, dims, parameters)
         
             # # # Do the piecewise motion correction of the group
             # TO CHECK THE PADDING
@@ -429,23 +429,4 @@ def normcorre(fnames, procs, parameters):
     hdf_mov['movie'].attrs['duration'] = duration    
 
     return hdf_mov, video_info
-
-    #################################################################################################
-    # 4. Check by playing both videos | press q to exit
-    #################################################################################################
-    # import caiman_peyrachelab as cmpl
-
-    # new_movie = np.memmap(mmap_mov, mode='r', dtype=np.float32, shape=(video_info['duration'].sum(), np.prod(dims)))
-    # new_movie = new_movie.reshape(video_info['duration'].sum(),dims[0],dims[1])
-    # new_movie = cmpl.movie(new_movie)
-
-    # orig_movie = cmpl.load_movie_chain(list(video_info.index.get_level_values(1)))
-
-    # m_tmp = cmpl.base.timeseries.concatenate([orig_movie, new_movie], axis=2)
-    # m_tmp.play()
-
-    # del m_tmp, new_movie, orig_movie
-
-    # return mmap_mov, dims, video_info
-
-
+    
