@@ -14,7 +14,6 @@ import time
 import shutil
 import glob
 import shlex
-import psutil
 import sys
 import os
 import numpy as np
@@ -38,7 +37,7 @@ def setup_cluster(backend='multiprocessing', n_processes=None, single_thread=Fal
             n_processes = np.int(os.environ.get('SLURM_NPROCS'))
         else:
             # roughly number of cores on your machine minus 1
-            n_processes = np.maximum(np.int(psutil.cpu_count()), 1)
+            n_processes = np.maximum(np.int(multiprocessing.cpu_count()), 1)
 
     if single_thread:
         dview = None
