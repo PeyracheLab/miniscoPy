@@ -1,0 +1,92 @@
+
+frame_rate: 30
+
+motion_correction:
+  strides: !!python/tuple [30,30] #shape of each patches without overlaps.
+  overlaps: !!python/tuple [6,6] #shape of the overlaps between each patches.
+  upsample_factor_grid: 1 #the number by which you want to multiple the number of patches during uspampling.
+  max_deviation_rigid: 3 #the maximum of deviation during the global correction.
+  max_shifts : [3,3] #the maximum shift that you will apply to each patch at once.
+  nb_round: 10 #the number of time you will apply the algorithm to the whole video.
+  upsample_factor: 2 #parameter of sima functions to find the correct shift.
+  filter_size: 10 #the size of the gaussian kernel to filter the whole field of view.
+  filter_size_patch: 5 # the size of the gaussian kernel to filter a patch.
+  save_original: False  # save the original movie (uncorrected) in the hdf5 file.
+  block_size : 200 # number of images in a block of the video
+
+
+cnmfe:
+  patch_params:
+    nb_patch: !!python/tuple [4,5] # number of patch in each dimension
+    overlaps: 40 # amount of overlaps between patch
+    only_init: True # only run initialization on patches
+    remove_very_bad_comps: False  #whether to remove components with very low values of component quality directly on the patch.
+                                  #This might create some minor imprecisions.
+                                  #However benefits can be considerable if done because if many components (>2000) are created
+                                  #and joined together, operation that causes a bottleneck
+    skip_refinement: False #If true it only performs one iteration of update spatial update temporal instead of two
+    ssub: 1 # downsampling factor in space for patches
+    tsub: 1 # downsampling factor in time for patches   
+
+  preprocess_params:
+    check_nan: False # use to interpolate missing data and replace nan
+    noise_method: 'mean' # method for averaging the noise either ('mean', 'median', 'logmexp')
+    noise_range: !!python/tuple [0.25,0.5] #Range of frequencies compared to Nyquist rate 
+                                          #over which the power spectrum is averaged default [0.25,0.5]
+    max_num_samples_fft: 3072 # downsampling of the movie to estimate noise if duration > 1000
+
+  init_params:
+    filter_data_centering: True
+    gSig: !!python/tuple [4,4] #expected half size of neurons
+    gSiz: !!python/tuple [10,10]
+    ssub: 2 # downsampling factor in space
+    tsub: 2 # downsampling factor in time    
+    thresh_init: 2  # pixel values smaller than thresh_init*noise will be set as 0
+                    # when computing the local correlation image.
+    min_corr: .8 # minimal correlation peak for 1-photon imaging initialization
+    min_pnr: 10 # minimal peak to noise ratio for 1-photon imaging initialization    
+    bd: 1 #pixels that are bd pixels away from the boundary will be ignored for initializing neurons.
+    min_pixel: 3 # minimum number of pixels used to assert it's a neuron
+    center_psf: True  # True indicates centering the filtering kernel for background
+                      # removal. This is useful for data with large background
+                      # fluctuations.
+    ring_size_factor: 1.5 #it's the ratio between the ring radius and neuron diameters.    
+
+  temporal_params:
+    block_size: 5000 #Number of pixels to be used to perform residual computation in blocks. Decrease if memory problems
+    method: 'oasis' # or 'cvxpy' method used for deconvolution. Suggested 'oasis' see    
+    num_blocks_per_run: 5 #In case of memory problems you can reduce this numbers, controlling the number of blocks processed in parallel during residual computing
+    p: 1 # order of the autoregressive process used to estimate deconvolution
+    ITER: 2
+    bas_nonneg: False
+    fudge_factor: 0.96
+    lags: 5
+    memory_efficient: False
+    nb: 16 # Number of background components
+    noise_method: 'mean'
+    noise_range: !!python/tuple [0.25,0.5]
+    solvers: !!python/list ['ECOS', 'SCS']
+
+  spatial_params:
+    method: 'dilate'
+    min_size: 3
+    max_size: 8
+    dist: 3
+    normalize: True  #wheter to norrmalize the C and A matrices so that diag(C*C.T) are ones
+    method_least_square: 'lasso_lars'  #method to perform the regression for the basis pursuit denoising.
+                                       # 'nnls_L0'. Nonnegative least square with L0 penalty
+                                        #'lasso_lars' lasso lars function from scikit learn                                    
+    medw: !!python/tuple [3,3] # window of median filter
+    thr_method: 'nrg' #  Method of thresholding: 
+                      # 'max' sets to zero pixels that have value less than a fraction of the max value
+                      # 'nrg' keeps the pixels that contribute up to a specified fraction of the energy
+    maxthr: 0.1  # Threshold of max value
+    nrgthr: 0.9999 # threshold of energy
+    extract_cc: True # flag to extract connected componenst
+    update_background_components: True #whether to update the background components during the spatial phase             
+    low_rank_background: True #if True the background is approximated with gnb components. If false every patch keeps its background (overlaps are randomly assigned to one spatial component only)
+                              #In the False case all the nonzero elements of the background components are updated using hals (to be used with one background per patch)    
+
+  merge_params:
+    thr: 0.8 # merging threshold, max correlation allowed
+    
