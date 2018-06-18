@@ -20,7 +20,7 @@ from numpy.fft import ifftshift
 #########################################
 
 
-def register_translation(src_image, target_image, upsample_factor=1, space="real", shifts_lb=None, shifts_ub=None, max_shifts=(10, 10), **kwargs):
+def register_translation(src_image, target_image, upsample_factor=1, space="real", shifts_lb=None, shifts_ub=None, max_shifts=[3, 3], **kwargs):
     """
 
     adapted from SIMA (https://github.com/losonczylab) and the
@@ -115,8 +115,19 @@ def register_translation(src_image, target_image, upsample_factor=1, space="real
     .. [1] Manuel Guizar-Sicairos, Samuel T. Thurman, and James R. Fienup,
            "Efficient subpixel image registration algorithms,"
            Optics Letters 33, 156-158 (2008).
-    """
-    # images must be the same shape
+    
+src_image= filtered_template
+target_image=filtered_image
+upsample_factor=parameters['upsample_factor']
+space="real"
+shifts_lb=None
+shifts_ub=None
+max_shifts=parameters['max_shifts']
+"""
+
+   
+        # images must be the same shape
+
     if src_image.shape != target_image.shape:
         raise ValueError("Error: images must really be same size for "
                          "register_translation")
@@ -148,7 +159,7 @@ def register_translation(src_image, target_image, upsample_factor=1, space="real
     else:
         raise ValueError("Error: register_translation only knows the \"real\" ""and \"fourier\" values for the ``space`` argument.")
 
-    # Whole-pixel shift - Compute cross-correlation by an IFFT
+        # Whole-pixel shift - Compute cross-correlation by an IFFT
     shape = src_freq.shape
     image_product = src_freq * target_freq.conj()
 
@@ -161,7 +172,7 @@ def register_translation(src_image, target_image, upsample_factor=1, space="real
         image_product = src_freq * target_freq.conj()
         cross_correlation = ifftn(image_product)
 
-    # Locate maximum
+        # Locate maximum
     new_cross_corr = np.abs(cross_correlation)
 
     if (shifts_lb is not None) or (shifts_ub is not None):
