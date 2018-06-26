@@ -10,11 +10,9 @@ import scipy
 import glob
 import yaml
 import sys,os
-os.chdir('/home/elena/miniscoPy')
 import h5py as hd
 from time import time
 import av
-#from  miniscopy.base.motion_correction import *
 from miniscopy.base.motion_correction import normcorre
 from miniscopy import setup_cluster, CNMFE
 from miniscopy import Movie
