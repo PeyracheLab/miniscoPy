@@ -10,13 +10,16 @@ import scipy
 import glob
 import yaml
 import sys,os
+os.chdir('/home/elena/miniscoPy')
 import h5py as hd
 from time import time
 import av
-
+#from  miniscopy.base.motion_correction import *
 from miniscopy.base.motion_correction import normcorre
 from miniscopy import setup_cluster, CNMFE
 from miniscopy import Movie
+
+
 
 if __name__ == '__main__':
 	#############################################################################################################
@@ -53,7 +56,7 @@ if __name__ == '__main__':
 	parameters = parameters_glob['motion_correction']
 
 	# This parameter controls the number of times the whole movie is corrected
-	parameters['nb_round'] = 20
+	parameters['nb_round'] = 1
 
 	# This parameter allows us to save the original movie to compare with the corrected one
 	parameters['save_original'] = True
@@ -77,6 +80,9 @@ if __name__ == '__main__':
 
 	# TO CLOSE THE WINDOW, PRESS Q
 	mv.play()
+
+	#close the hdf file
+	data.close()
 
 	# terminate the cluster
 	procs.terminate()
