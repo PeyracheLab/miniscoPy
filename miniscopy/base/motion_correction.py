@@ -635,23 +635,20 @@ def normcorre(fnames, procs, parameters):
   
    
     for i in range(parameters['nb_round']): # loop on the movie
-        
         for start_block in tqdm(block_starts): # for each block
             chunk_starts_loc = np.arange(start_block,start_block+new_block,chunk_size)
-            for start_chunk in tqdm(chunk_starts_loc) : # for each chunk
+            for start_chunk in tqdm(chunk_starts_loc) : # for each chunk                
                 chunk_movie = hdf_mov['movie'][start_chunk:start_chunk+chunk_size]
-                index = np.arange(chunk_size)
+                index = np.arange(chunk_movie.shape[0])
                 splits_index = np.array_split(index, nb_splits)
                 list_chunk_movie = [] #split of a chunk
                 for idx in splits_index:
                     list_chunk_movie.append(chunk_movie[idx]) #each split of a chunk will be process in a different processor of the computer
 
                 new_chunk = map_function(procs, nb_splits, list_chunk_movie, template, dims, parameters)
-                new_chunk_arr = np.asarray(new_chunk)
-                dims_chunk = chunk_movie.shape
-                new_chunk_arr = new_chunk_arr.reshape(dims_chunk[0],dims_chunk[1])
-                
-                hdf_mov['movie'][start_chunk:start_chunk+chunk_size] = np.asarray(new_chunk_arr) #update of the chunk
+                new_chunk_arr = np.vstack(new_chunk)
+                hdf_mov['movie'][start_chunk:start_chunk+chunk_size] = np.array(new_chunk_arr) #update of the chunk
+
             template = get_template(hdf_mov['movie'], dims, start = start_block, duration = new_block) #update the template after each block 
     
     hdf_mov['movie'].attrs['dims'] = dims
