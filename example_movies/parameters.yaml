@@ -12,6 +12,7 @@ motion_correction:
   filter_size: 10
   filter_size_patch: 5
   batch_size: 100
+  save_original: False
 
 cnmfe:
   patch_params:

@@ -311,7 +311,7 @@ def init_neurons_corr_pnr(Yc, dims, gSig, gSiz, thresh_init, min_corr, min_pnr, 
                           'optimize_g': 1,
                           'penalty': 1}
 
-
+    # Pdb().set_trace()
 
     duration = Yc.shape[0]    
     data_filtered = np.zeros((duration, dims[0], dims[1]))
@@ -333,7 +333,7 @@ def init_neurons_corr_pnr(Yc, dims, gSig, gSiz, thresh_init, min_corr, min_pnr, 
                 tmp = cv2.GaussianBlur(frame.reshape(dims), ksize = ksize, sigmaX = gSig[0], sigmaY = gSig[1], borderType=1)
                 data_filtered[i+j] = tmp
     
-
+    # Pdb().set_trace()
 
     # compute peak-to-noise ratio    
     if filter_data_centering:
@@ -541,7 +541,7 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
     from time import time    
     start = time()
     new_dims = tuple(Yc.attrs['dims'])
-
+    # Pdb().set_trace()
     # Yc is not modified inside this function | it is not either in original cnmfe or it's a bug
     A, C, _, _, center = init_neurons_corr_pnr(Yc, new_dims, **kwargs)        
     
