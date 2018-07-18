@@ -426,6 +426,13 @@ def init_neurons_corr_pnr(Yc, dims, gSig, gSiz, thresh_init, min_corr, min_pnr, 
                     v_search[r, c] = 0
                     continue
 
+            # new heuristic from Caiman
+            y0_diff = np.diff(y0)
+            if y0_diff.max() < 3*y0_diff.std():
+                v_search[r,c] = 0
+                continue
+
+
             # crop a small box for estimation of ai and ci
             r_min = max(0, r - gSiz[0])
             r_max = min(dims[0], r + gSiz[0] + 1)
@@ -448,8 +455,10 @@ def init_neurons_corr_pnr(Yc, dims, gSig, gSiz, thresh_init, min_corr, min_pnr, 
             r2_max = min(dims[0], r + 2 * gSiz[0] + 1)
             c2_min = max(0, c - 2 * gSiz[1])
             c2_max = min(dims[1], c + 2 * gSiz[1] + 1)
-                        
-            ai, ci_raw, ind_success = extract_ac(data_filtered_box,data_raw_box, ind_ctr, patch_dims, filter_data_centering)
+            try:                        
+                ai, ci_raw, ind_success = extract_ac(data_filtered_box,data_raw_box, ind_ctr, patch_dims, filter_data_centering)
+            except ValueError:
+                Pdb().set_trace()
 
             if (np.sum(ai > 0) < min_pixel) or (not ind_success):
                 # bad initialization. discard and continue
