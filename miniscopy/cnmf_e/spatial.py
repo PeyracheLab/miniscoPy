@@ -30,7 +30,7 @@ def circular_constraint(img_original):
     cmin = np.min(csub)
     cmax = np.max(csub) + 1
 
-    if (rmax - rmin < 1) or (cmax - cmin < 1):
+    if (rmax - rmin <= 1) or (cmax - cmin <= 1):
         return img
 
     if rmin == 0 and rmax == nr and cmin == 0 and cmax == nc:
