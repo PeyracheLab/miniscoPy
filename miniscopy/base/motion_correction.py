@@ -41,13 +41,14 @@ Copyright (C) 2011, the scikit-image team
 import numpy as np
 import cv2
 import itertools
-from . import sima_functions as sima 
+#from . import sima_functions as sima 
 import warnings
 import pandas as pd
 import re
 import av
 from tqdm import tqdm
 import os
+import sys
 import h5py as hd
 from IPython.core.debugger import Pdb
 from copy import copy
@@ -600,7 +601,6 @@ def map_function(procs, nb_splits, chunk_movie, template, dims, parameters):
     return tmp
 
 
-
 def normcorre(fnames, procs, parameters):
     """
         see 
@@ -611,11 +611,38 @@ def normcorre(fnames, procs, parameters):
         CaiMan github
     """
     #################################################################################################
-    # 1. Load every movies in only one file 
+    # 1. Load every movies in only one file  or load the HDF if already present
     #################################################################################################
-    # files are sorted
-    video_info, videos, dims = get_video_info(fnames)
-    hdf_mov       = get_hdf_file(videos, video_info, dims, parameters['save_original'])
+    video_info = None
+    main_name, file_extension = os.path.splitext(fnames[0])    
+
+    #fnames is the name of the file we will use 
+    if file_extension == '.hdf5' : 
+        hdf_mov = hd.File(fnames[0], 'r+')
+        if 'original' in hdf_mov.keys():
+            duration = hdf_mov['original'].attrs['duration']
+            dims = tuple(hdf_mov['original'].attrs['dims'])
+
+            if 'movie' not in hdf_mov.keys():                
+                movie = hdf_mov.create_dataset('movie', shape = (duration, dims[0]*dims[1]), dtype = np.float32, chunks=True)
+            
+            size = hdf_mov['original'].chunks[0]
+            starts = np.arange(0, duration, size)
+            for i in starts:
+                hdf_mov['movie'][i:i+size] = hdf_mov['original'].value[i:i+size]
+
+        else:
+            print("The key of the movie should be called 'original'")
+
+    elif file_extension == '.avi':
+        video_info, videos, dims = get_video_info(fnames)
+        hdf_mov       = get_hdf_file(videos, video_info, dims, parameters['save_original'])
+        duration    = video_info['duration'].sum() 
+
+    else : 
+        print ("Error : File extension not accepted") 
+        sys.exit()
+
     
     #################################################################################################
     # 2. Estimate template from first n frame
@@ -625,7 +652,7 @@ def normcorre(fnames, procs, parameters):
     #################################################################################################
     # 3. run motion correction / update template
     #################################################################################################    
-    duration    = video_info['duration'].sum()  
+     
     chunk_size  = hdf_mov['movie'].chunks[0] 
     chunk_starts_glob = np.arange(0, duration, chunk_size)
     nb_splits   = os.cpu_count() 
