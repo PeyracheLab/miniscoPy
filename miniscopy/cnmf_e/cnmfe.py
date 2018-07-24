@@ -52,7 +52,7 @@ class Patch(object):
 	def fit(self, procs):       
 		#################################################################################################
 		# 1. Preprocess data / Compute spectral noise for each pixel
-		#################################################################################################           
+		#################################################################################################           		
 		preprocess_data(self, procs, **self.parameters['preprocess_params'])
 				
 		#################################################################################################
@@ -450,14 +450,18 @@ class CNMFE(object):
 		return
 
 	def get_correlation_info(self, filter_ = False):
+		import cv2
 		dims 	= self.dims
 		chunk_size  = self.Y.chunks[0]       
 
-		data_filtered  = self.cnmfe_group.create_dataset('filtered_movie', shape = (self.duration, dims[0], dims[1]), chunks = (chunk_size,dims[0],dims[1]))
+		if 'filtered_movie' in self.cnmfe_group.keys():
+			data_filtered = self.cnmfe_group['filtered_movie']
+		else:
+			data_filtered  = self.cnmfe_group.create_dataset('filtered_movie', shape = (self.duration, dims[0], dims[1]), chunks = (chunk_size,dims[0],dims[1]))
 				
 		if filter_:
 			gSig = self.parameters['init_params']['gSig']
-			ksize = tuple((3*gSig) // 2 * 2 + 1)    
+			ksize = tuple((3*np.array(gSig)) // 2 * 2 + 1)
 		
 		
 		data_filtered_mean = np.zeros(dims) # in case it's use
@@ -466,7 +470,7 @@ class CNMFE(object):
 			data = self.Y[i:i+chunk_size,:]			
 			for j, frame in enumerate(data):    
 				if filter_:    
-					if center_psf:
+					if self.parameters['init_params']['center_psf']:
 						tmp = cv2.GaussianBlur(frame.reshape(dims), ksize = ksize, sigmaX = gSig[0], sigmaY = gSig[1], borderType=1)
 						tmp2 = cv2.boxFilter(frame.reshape(dims), ddepth=-1, ksize = ksize, borderType = 1)
 						data_filtered[i+j] = tmp - tmp2
@@ -495,44 +499,6 @@ class CNMFE(object):
 		cn = local_correlations_fft(data_filtered)
 
 		return cn, pnr
-
-	# def get_correlation_info(self, filter_ = False):
-	# 	dims = self.dims
-	# 	data_filtered = np.zeros((self.duration, dims[0], dims[1]))
-		
-	# 	if filter_:
-	# 		gSig = self.parameters['init_params']['gSig']
-	# 		ksize = tuple((3*gSig) // 2 * 2 + 1)    
-		
-	# 	chunk_size  = self.Y.chunks[0]       
-	# 	for i in range(0, self.duration+chunk_size, chunk_size):
-	# 		data = self.Y[i:i+chunk_size,:]			
-	# 		for j, frame in enumerate(data):    
-	# 			if filter_:    
-	# 				if center_psf:
-	# 					tmp = cv2.GaussianBlur(frame.reshape(dims), ksize = ksize, sigmaX = gSig[0], sigmaY = gSig[1], borderType=1)
-	# 					tmp2 = cv2.boxFilter(frame.reshape(dims), ddepth=-1, ksize = ksize, borderType = 1)
-	# 					data_filtered[i+j] = tmp - tmp2
-	# 				else:
-	# 					tmp = cv2.GaussianBlur(frame.reshape(dims), ksize = ksize, sigmaX = gSig[0], sigmaY = gSig[1], borderType=1)
-	# 					data_filtered[i+j] = tmp
-	# 			else:
-	# 				data_filtered[i+j] = frame.reshape(dims)
-		
-
-
-	# 	# compute peak-to-noise ratio    
-	# 	if self.parameters['init_params']['filter_data_centering']:
-	# 		data_filtered -= data_filtered.mean(axis=0)    
-	# 	data_max = np.max(data_filtered, axis=0)    
-	# 	noise_pixel = get_noise_fft(data_filtered)
-	# 	pnr = np.divide(data_max, noise_pixel)
-		
-
-	# 	# compute correlation image
-	# 	cn = local_correlations_fft(data_filtered)
-
-	# 	return cn, pnr
 
 
 

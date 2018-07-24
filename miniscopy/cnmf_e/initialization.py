@@ -550,7 +550,7 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
     from time import time    
     start = time()
     new_dims = tuple(Yc.attrs['dims'])
-    # Pdb().set_trace()
+    
     # Yc is not modified inside this function | it is not either in original cnmfe or it's a bug
     A, C, _, _, center = init_neurons_corr_pnr(Yc, new_dims, **kwargs)        
     
@@ -565,6 +565,9 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
     sn = cv2.resize(patch.sn, new_dims[::-1], interpolation = cv2.INTER_AREA)
     nr = C.shape[1]
     
+    # Pdb().set_trace()
+
+
     if ring_size_factor is not None:        
         # background according to ringmodel                                
         W, b0 = compute_W(patch, Yc, A, C, CdotA, np.round(kwargs['gSiz'][0]*ring_size_factor).astype('int'), new_dims)
@@ -575,7 +578,7 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
         if nr:
             # 1st iteration on decimated data
             # update temporal
-            C = update_temporal_components(B.copy(), A, C, **patch.parameters['temporal_params'])
+            C, A = update_temporal_components(B.copy(), A, C, **patch.parameters['temporal_params'])
 
             # update spatial     
             A, C = update_spatial_components(B.copy(), A, C, None, sn, **patch.parameters['spatial_params'])
@@ -614,37 +617,6 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
                 for j, frame in enumerate(data):
                     Ys[i+j] = cv2.resize(frame.reshape(patch.dims), new_dims[::-1], interpolation = cv2.INTER_AREA).flatten()                    
                     B[i+j] = Ys[i+j] - tmp[i+j]
-
-
-        # nr = C.shape[1]        
-        # if tsub > 1:              
-        #     if nr: # when doubling C matrix, it can causes a bug if odd size
-        #         patch.C = patch.patch_group.create_dataset('C', shape = (patch.duration,nr), chunks = (patch.chunks[0],1))
-        #         index = np.arange(duration).repeat(tsub)
-        #         if len(index) <= patch.duration:
-        #             patch.C[0:len(index)] = C[index]
-        #             patch.C[-1] = C[-1] # tripling the last element
-        #         else:
-        #             patch.C[:] = C[index][0:patch.duration]
-        #     else:
-        #         patch.C = patch.patch_group.create_dataset('C', shape = (patch.duration,nr))
-                
-        #     tmp = patch.C.value.dot(A)
-        #     if ssub == 1:                
-        #         B = patch.patch_group['Y'] - tmp
-        #     else: # downsample movie in space only                        
-        #         Ys = np.zeros(tmp.shape)
-        #         B = np.zeros(tmp.shape)
-        #         chunk_size = patch.patch_group['Y'].chunks[0]                
-        #         for i in range(0, patch.duration+chunk_size,chunk_size):
-        #             data = patch.patch_group['Y'][i:i+chunk_size]                    
-        #             for j, frame in enumerate(data):
-        #                 Ys[i+j] = cv2.resize(frame.reshape(patch.dims), new_dims[::-1], interpolation = cv2.INTER_AREA).flatten()                    
-        #                 B[i+j] = Ys[i+j] - tmp[i+j]
-        #     # N.B: upsampling B in space is fine, but upsampling in time doesn't work well,
-        #     # cause the error in upsampled background can be of similar size as neural signal            
-        # else:        
-        #     B = patch.patch_group['Y'] - C.dot(A) # TO CHECK HERE
         
         tmp = B - b0  #(Y - AC - b0)
         YplusB = b0 + tmp.dot(W.T)

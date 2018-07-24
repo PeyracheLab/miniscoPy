@@ -443,7 +443,7 @@ def tile_and_correct(image, template, dims, parameters):
     total_shifts        = np.vstack((shift_img_x.flatten(),shift_img_y.flatten())).transpose()
     new_upsamp_patches  = np.ones((num_tiles, upsamp_wdims[0], upsamp_wdims[1]))*np.inf
     for i, patch_pos in enumerate(upsamp_patches_index):
-        xs, xe, ys, ye  = (patch_pos[0],np.minimum(patch_pos[0]+upsamp_wdims[0],dims[0]-1),patch_pos[1],np.minimum(patch_pos[1]+upsamp_wdims[1],dims[1]-1))
+        xs, xe, ys, ye  = (patch_pos[0],np.minimum(patch_pos[0]+upsamp_wdims[0],dims[0]),patch_pos[1],np.minimum(patch_pos[1]+upsamp_wdims[1],dims[1]))
         patch           = image[xs:xe,ys:ye]
         if total_shifts[i].sum():#where there is a shift                        
             new_upsamp_patches[i,0:patch.shape[0],0:patch.shape[1]] = apply_shift_iteration(patch.copy(), total_shifts[i], border_nan = True)
@@ -451,80 +451,121 @@ def tile_and_correct(image, template, dims, parameters):
             new_upsamp_patches[i,0:patch.shape[0],0:patch.shape[1]] = patch.copy()
 
 
-    normalizer      = np.zeros_like(image)*np.nan
-    new_image       = np.copy(image)
+    normalizer      = np.ones_like(image)
+    new_image       = np.copy(image)    
     med             = np.median(new_image)
-    if max_shear < 0.5:                
-        np.seterr(divide='ignore')
-        # create weight matrix for blending
-        # different from original.    
-        tmp             = np.ones(upsamp_wdims)    
-        tmp[:new_overlaps[0], :] = np.linspace(0, 1, new_overlaps[0])[:, None]
-        tmp             = tmp*np.flip(tmp, 0)
-        tmp2             = np.ones(upsamp_wdims)    
-        tmp2[:, :new_overlaps[1]] = np.linspace(0, 1, new_overlaps[1])[None, :]
-        tmp2            = tmp2*np.flip(tmp2, 1)
-        blending_func   = tmp*tmp2
-        border          = tuple(itertools.product(np.arange(upsamp_pdims[0]),np.arange(upsamp_wdims[0])))
-        for i, patch_pos in enumerate(upsamp_patches_index):
-            xs, xe, ys, ye = (patch_pos[0],patch_pos[0]+upsamp_wdims[0],patch_pos[1],patch_pos[1]+upsamp_wdims[1])        
-            ye = np.minimum(ye, new_image.shape[1])
-            xe = np.minimum(xe, new_image.shape[0])
-            prev_val_1  = normalizer[xs:xe,ys:ye]
-            prev_val    = new_image[xs:xe,ys:ye]
 
-            tmp = new_upsamp_patches[i,xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
-            tmp2 = blending_func[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+    if np.all(shift_img_x == 0) and np.all(shift_img_y == 0):
+        return new_image.flatten()
+    else:
+        if max_shear < 0.5:                        
+            np.seterr(all='raise')
+            # create weight matrix for blending
+            # different from original.    
+            # plus the blending func is dependant of the border.
 
-            if xs == 0 or ys == 0 or xe == new_image.shape[0] or ye == new_image.shape[1]:
-                normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(tmp)*1*np.ones_like(tmp2), prev_val_1]),-1)
-                new_image[xs:xe,ys:ye] = np.nansum(np.dstack([tmp*np.ones_like(tmp2), prev_val]),-1)
-            else:
-                normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(tmp)*1*tmp2, prev_val_1]),-1)
-                new_image[xs:xe,ys:ye] = np.nansum(np.dstack([tmp*tmp2, prev_val]),-1)
+            tmp             = np.ones(upsamp_wdims)    
+            tmp[:new_overlaps[0], :] = np.linspace(0, 1, new_overlaps[0])[:, None]
+            corner          = np.flip(tmp, 0) * np.rot90(tmp, -1)
+            tmp             = tmp*np.flip(tmp, 0)
+            tmp2             = np.ones(upsamp_wdims)    
+            tmp2[:, :new_overlaps[1]] = np.linspace(0, 1, new_overlaps[1])[None, :]
+            tmp2            = tmp2*np.flip(tmp2, 1)
+            blending_func   = tmp*tmp2        
+            upper_band       = np.ones(upsamp_wdims)    
+            upper_band[-new_overlaps[0]:,:] = np.linspace(1, 0, new_overlaps[0])[:, None]
+            upper_band = np.rot90(upper_band, -1)*upper_band*np.rot90(upper_band, 1)
+            left_band = np.rot90(upper_band, 1)
 
-        new_image = new_image/normalizer
-    else:        
-        half_overlap_x = np.int(new_overlaps[0] / 2)
-        half_overlap_y = np.int(new_overlaps[1] / 2)        
-        for i, patch_pos in enumerate(upsamp_patches_index):
-            if total_shifts[i].sum() != 0.0 :
-                if patch_pos[0] == 0 and patch_pos[1] == 0:
-                    xs = patch_pos[0]
-                    xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
-                    ys = patch_pos[1]
-                    ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y            
-                elif patch_pos[0] == 0:
-                    xs = patch_pos[0]
-                    xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
-                    ys = patch_pos[1]+half_overlap_y
-                    ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y                
-                    ye = np.minimum(ye, new_image.shape[1])
-                elif patch_pos[1] == 0:
-                    xs = patch_pos[0]+half_overlap_x
-                    xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
-                    xe = np.minimum(xe, new_image.shape[0])
-                    ys = patch_pos[1]
-                    ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y                                
-                else:
-                    xs = patch_pos[0]+half_overlap_x
-                    xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
-                    xe = np.minimum(xe, new_image.shape[0])
-                    ys = patch_pos[1]+half_overlap_y
-                    ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y                                
-                    ye = np.minimum(ye, new_image.shape[1])
-                new_patch = new_upsamp_patches[i,xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
-                new_patch[np.isinf(new_patch)] = np.nan
-                dims_patch = new_patch.shape
-                if np.isnan(new_patch).all():
-                    new_patch[:,:] = med
-                elif np.isnan(new_patch).any():
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", category=RuntimeWarning)
-                        new_patch[np.isnan(new_patch)] = np.nanmedian(new_patch)
             
-                new_image[xs:xe,ys:ye] = new_patch
- 
+            for i, patch_pos in enumerate(upsamp_patches_index):            
+                xs, xe, ys, ye = (patch_pos[0],patch_pos[0]+upsamp_wdims[0],patch_pos[1],patch_pos[1]+upsamp_wdims[1])        
+                ye = np.minimum(ye, new_image.shape[1])
+                xe = np.minimum(xe, new_image.shape[0])
+                prev_norm  = np.copy(normalizer[xs:xe,ys:ye])
+                prev_val    = np.copy(new_image[xs:xe,ys:ye])
+                new_val = np.copy(new_upsamp_patches[i,xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]])
+
+                if xs != 0 and ys != 0 and xe != new_image.shape[0] and ye != new_image.shape[1]:
+                    tmp2 = blending_func[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp2, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp2, prev_val]),-1)
+                elif xs == 0 and ys == 0: # upper left corner                
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*corner, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*corner, prev_val]),-1)
+                elif xs == 0 and ye == new_image.shape[1]: # upper right corner
+                    tmp3 = np.rot90(corner, -1)[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+                elif xe == new_image.shape[0] and ys == 0: # lower left corner                
+                    tmp3 = np.rot90(corner, 1)[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+                elif xe == new_image.shape[0] and ye == new_image.shape[1]: # lower right corner
+                    tmp3 = np.rot90(corner, 2)[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]               
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+                elif xs == 0: # upper
+                    tmp3 = upper_band[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]                
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+                elif xe == new_image.shape[0]: # lower
+                    tmp3 = np.flip(upper_band, 0)[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]  
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+                elif ys == 0: # left
+                    tmp3 = left_band[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+                elif ye == new_image.shape[1]: # right
+                    tmp3 = np.flip(left_band, 1)[xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+                    normalizer[xs:xe,ys:ye] = np.nansum(np.dstack([~np.isnan(new_val)*1*tmp3, prev_norm]),-1)
+                    new_image[xs:xe,ys:ye] = np.nansum(np.dstack([new_val*tmp3, prev_val]),-1)
+            
+            
+            new_image = new_image/normalizer
+
+        else:        
+            half_overlap_x = np.int(new_overlaps[0] / 2)
+            half_overlap_y = np.int(new_overlaps[1] / 2)        
+            for i, patch_pos in enumerate(upsamp_patches_index):
+                if total_shifts[i].sum() != 0.0 :
+                    if patch_pos[0] == 0 and patch_pos[1] == 0:
+                        xs = patch_pos[0]
+                        xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
+                        ys = patch_pos[1]
+                        ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y            
+                    elif patch_pos[0] == 0:
+                        xs = patch_pos[0]
+                        xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
+                        ys = patch_pos[1]+half_overlap_y
+                        ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y                
+                        ye = np.minimum(ye, new_image.shape[1])
+                    elif patch_pos[1] == 0:
+                        xs = patch_pos[0]+half_overlap_x
+                        xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
+                        xe = np.minimum(xe, new_image.shape[0])
+                        ys = patch_pos[1]
+                        ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y                                
+                    else:
+                        xs = patch_pos[0]+half_overlap_x
+                        xe = patch_pos[0]+upsamp_wdims[0]-half_overlap_x
+                        xe = np.minimum(xe, new_image.shape[0])
+                        ys = patch_pos[1]+half_overlap_y
+                        ye = patch_pos[1]+upsamp_wdims[1]-half_overlap_y                                
+                        ye = np.minimum(ye, new_image.shape[1])
+                    new_patch = new_upsamp_patches[i,xs-patch_pos[0]:xe-patch_pos[0],ys-patch_pos[1]:ye-patch_pos[1]]
+                    new_patch[np.isinf(new_patch)] = np.nan
+                    dims_patch = new_patch.shape
+                    if np.isnan(new_patch).all():
+                        new_patch[:,:] = med
+                    elif np.isnan(new_patch).any():
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", category=RuntimeWarning)
+                            new_patch[np.isnan(new_patch)] = np.nanmedian(new_patch)
+                
+                    new_image[xs:xe,ys:ye] = new_patch
+
     if np.isinf(new_image).any(): new_image[np.isinf(new_image)] = np.nanmedian(new_image)
 
     return new_image.flatten()
@@ -581,7 +622,7 @@ def make_corrections(images, template, dims, parameters):
 
     for i, img in enumerate(images):
         img_glob = global_correct(img, template, dims, parameters)
-        img_loc = tile_and_correct(img_glob, template, dims, parameters)
+        img_loc = tile_and_correct(img_glob, template, dims, parameters)        
         images[i] = img_loc
     return images
 

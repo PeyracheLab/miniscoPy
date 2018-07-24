@@ -195,17 +195,16 @@ def update_temporal_components(Y, A, C, **kwargs):
     C, bl, c1, sn, g, lam = update_iteration(C, YrA, AA, nA, parrllcomp, len_parrllcomp, **kwargs)
     
     ff = np.where(np.sum(C, axis=0) == 0)  # remove empty components
+    
     if np.size(ff) > 0:  # Eliminating empty temporal components
-        # TODO
-        import sys
-        sys.exit()        
-        # ff = ff[0]
-        # keep = list(range(A.shape[1]))
-        # for i in ff:
-        #     keep.remove(i)
+        ff = ff[0]
+        keep = list(range(A.shape[0]))
+        for i in ff:
+            keep.remove(i)
 
-        # A = A[:, keep]
-        # C = np.delete(C, list(ff), 0)
+        A = np.delete(A, list(ff), 0)
+        C = np.delete(C, list(ff), 1)
+        
         # YrA = np.delete(YrA, list(ff), 1)
         # S = np.delete(S, list(ff), 0)
         # sn = np.delete(sn, list(ff))
@@ -217,5 +216,6 @@ def update_temporal_components(Y, A, C, **kwargs):
         # background_ff = list(filter(lambda i: i > 0, ff - nr))
         # nr = nr - (len(ff) - len(background_ff))
     # print("Time to update temporal components ", time() - start)
-    return C
+    
+    return C, A
 
