@@ -401,14 +401,14 @@ class CNMFE(object):
 			TODO go in parrallel here
 		"""                             
 		# update temporal               
-		self.C[...] = update_temporal_components(self.Y, self.A, self.C, **self.parameters['temporal_params'])   
+		self.C[...], self.A[...] = update_temporal_components(self.Y, self.A, self.C, **self.parameters['temporal_params'])   
 
 		# update spatial
 		self.parameters['spatial_params']['se'] = np.ones((1,)*len(self.dims), dtype = np.uint8)                
 		self.A[...], self.C[...] = update_spatial_components(self.Y, self.A, self.C, None, self.sn, **self.parameters['spatial_params'])
 
 		# update temporal       
-		self.C[...] = update_temporal_components(self.Y, self.A, self.C, **self.parameters['temporal_params'])   
+		self.C[...], self.A[...] = update_temporal_components(self.Y, self.A, self.C, **self.parameters['temporal_params'])   
 		
 		# normalize AC      
 		normalize_AC(self, doYrA = False)

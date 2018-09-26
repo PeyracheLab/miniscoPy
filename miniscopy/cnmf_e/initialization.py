@@ -564,10 +564,7 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
     B = Yc - CdotA
     sn = cv2.resize(patch.sn, new_dims[::-1], interpolation = cv2.INTER_AREA)
     nr = C.shape[1]
-    
-    # Pdb().set_trace()
-
-
+        
     if ring_size_factor is not None:        
         # background according to ringmodel                                
         W, b0 = compute_W(patch, Yc, A, C, CdotA, np.round(kwargs['gSiz'][0]*ring_size_factor).astype('int'), new_dims)
@@ -646,10 +643,10 @@ def greedyROI_corr(patch, Yc, tsub, ssub, ring_size_factor, **kwargs):
         chunk_size = patch.B.chunks[1]
         for i in range(0, np.prod(patch.dims)+chunk_size,chunk_size):            
             patch.B[:,i:i+chunk_size] = patch.patch_group['Y'][:,i:i+chunk_size] - patch.B[:,i:i+chunk_size]
-                
+        
         if nr:
             # # Update temporal                    
-            patch.C[...] = update_temporal_components(patch.B, patch.A, patch.C, **patch.parameters['temporal_params'])   
+            patch.C[...], patch.A[...] = update_temporal_components(patch.B, patch.A, patch.C, **patch.parameters['temporal_params'])   
 
             # # Update spatial
             patch.A[...], patch.C[...] = update_spatial_components(patch.B, patch.A, patch.C, None, patch.sn, **patch.parameters['spatial_params'])
