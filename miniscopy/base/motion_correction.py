@@ -309,7 +309,7 @@ def get_hdf_file(videos, video_info, dims, save_original, **kwargs):
         stream  = next(s for s in videos[v].streams if s.type == 'video')        
         tmp     = np.zeros((video_info['duration'].xs(v, level=1).values[0], np.prod(dims)), dtype=np.float32)
         for i, packet in enumerate(videos[v].demux(stream)):
-            frame           = packet.decode_one().to_nd_array(format = 'bgr24')[:,:,0].astype(np.float32)       
+            frame           = packet.decode_one().to_ndarray(format = 'bgr24')[:,:,0].astype(np.float32)       
             tmp[i]          = frame.reshape(np.prod(dims))
             if i+1 == stream.duration : break                        
             

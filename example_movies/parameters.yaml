@@ -2,17 +2,18 @@
 frame_rate: 30
 
 motion_correction:
-  strides: !!python/tuple [96,94]
-  overlaps: !!python/tuple [6,6]
-  upsample_factor_grid: 1
-  max_deviation_rigid: 10
-  max_deviation_patch: 1
-  nb_round: 10
-  upsample_factor: 2
-  filter_size: 10
-  filter_size_patch: 5
-  batch_size: 100
-  save_original: False
+  strides: !!python/tuple [30,30] #shape of each patches without overlaps.
+  overlaps: !!python/tuple [6,6] #shape of the overlaps between each patches.
+  upsample_factor_grid: 1 #the number by which you want to multiple the number of patches during uspampling.
+  max_deviation_rigid: 3 #the maximum of deviation during the global correction.
+  max_shifts : [3,3] #the maximum shift that you will apply to each patch at once.
+  nb_round: 2 #the number of time you will apply the algorithm to the whole video.
+  upsample_factor: 2 #parameter of sima functions to find the correct shift.
+  filter_size: 10 #the size of the gaussian kernel to filter the whole field of view.
+  filter_size_patch: 5 # the size of the gaussian kernel to filter a patch.
+  save_original: False  # save the original movie (uncorrected) in the hdf5 file.
+  block_size : 200 # number of images in a block of the video
+
 
 cnmfe:
   patch_params:

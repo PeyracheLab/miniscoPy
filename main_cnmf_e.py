@@ -36,7 +36,7 @@ if __name__ == '__main__':
     #############################################################################################################
     # start a cluster for parallel processing
     #############################################################################################################
-    c, procs, n_processes = setup_cluster(backend='local', n_processes=8, single_thread=False)
+    c, procs, n_processes = setup_cluster(backend='local', n_processes=4, single_thread=False)
 
     # #############################################################################################################
     # # MOTION CORRECTION | create the motion_corrected.hdf5 file
