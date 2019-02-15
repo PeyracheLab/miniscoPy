@@ -55,7 +55,6 @@ from copy import copy
 from miniscopy.base.sima_functions import *
 
 
-
 def get_vector_field_image (folder_name,shift_appli, parameters):
     '''This function is based on the jupyter notebook main_test_motion_correction.ipynb
     parameters:
@@ -107,6 +106,7 @@ def get_vector_field_image (folder_name,shift_appli, parameters):
     
     return (image,X, Y, U, V,Xp,Yp,rect,dims)
 
+
 def vector_field (matrix_X, matrix_Y,strides,wdims,pdims,dims):
     """
     Creat a vector field from 2 matrix of coordinates
@@ -147,6 +147,7 @@ def vector_field (matrix_X, matrix_Y,strides,wdims,pdims,dims):
     Yp = yp.reshape(pdims)
 
     return (X,Y,U,V,Xp,Yp)
+
 
 def join_patches(image,max_shear,upsamp_wdims,new_overlaps,upsamp_pdims,upsamp_patches_index,patch_pos,total_shifts,new_upsamp_patches):
     
@@ -238,6 +239,7 @@ def get_max_fluo(img, parameters) :
     
     return max_fluo, mf 
 
+
 def low_pass_filter_space(img_orig, filter_size):
     """ Filter a 2D image
 
@@ -298,7 +300,6 @@ def get_hdf_file(videos, video_info, dims, save_original, **kwargs):
     
     Returns :
     -file : HDF5 file"""
-
     hdf_mov     = os.path.split(video_info.index.get_level_values(1)[0])[0] + '/' + 'motion_corrected.hdf5'
     file        = hd.File(hdf_mov, "w")
     movie       = file.create_dataset('movie', shape = (video_info['duration'].sum(), np.prod(dims)), dtype = np.float32, chunks=True)
@@ -309,7 +310,7 @@ def get_hdf_file(videos, video_info, dims, save_original, **kwargs):
         stream  = next(s for s in videos[v].streams if s.type == 'video')        
         tmp     = np.zeros((video_info['duration'].xs(v, level=1).values[0], np.prod(dims)), dtype=np.float32)
         for i, packet in enumerate(videos[v].demux(stream)):
-            frame           = packet.decode_one().to_ndarray(format = 'bgr24')[:,:,0].astype(np.float32)       
+            frame           = packet.decode()[0].to_ndarray(format = 'bgr24')[:,:,0].astype(np.float32)
             tmp[i]          = frame.reshape(np.prod(dims))
             if i+1 == stream.duration : break                        
             
@@ -325,12 +326,14 @@ def get_hdf_file(videos, video_info, dims, save_original, **kwargs):
     file.attrs['filename'] = hdf_mov
     return file
 
+
 def get_template(movie, dims, start = 0, duration = 1):
     if np.isnan(movie[start:start+duration]).sum(): 
         template     = np.nanmedian(movie[start:start+duration], axis = 0).reshape(dims)
     else :
         template     = np.median(movie[start:start+duration], axis = 0).reshape(dims)
     return template
+
 
 def get_patches_position(dims, strides, overlaps, **kwargs):
     ''' Return a matrix of the position of each patches without overlapping, the dimension of each patch and the dimension of this matrix 
@@ -347,6 +350,7 @@ def get_patches_position(dims, strides, overlaps, **kwargs):
     patches_index = np.atleast_3d(np.meshgrid(height_pos, width_pos, indexing = 'ij'))
     pdims       = patches_index.shape[1:] #dimension of the patches index 
     return patches_index.reshape(patches_index.shape[0], np.prod(patches_index.shape[1:])).transpose(), wdims, pdims
+
 
 def apply_shift_iteration(img, shift, border_nan=False, border_type=cv2.BORDER_REFLECT):
     """Applied an affine transformation to an image
@@ -380,6 +384,7 @@ def apply_shift_iteration(img, shift, border_nan=False, border_type=cv2.BORDER_R
     img[np.isnan(img)] = np.nanmean(img)
 
     return img
+
 
 def tile_and_correct(image, template, dims, parameters):
     """ perform piecewise rigid motion correction iteration, by
@@ -570,6 +575,7 @@ def tile_and_correct(image, template, dims, parameters):
 
     return new_image.flatten()
 
+
 def global_correct(image, template, dims, parameters):
     """ 
         Do a global correction of the image """
@@ -617,6 +623,7 @@ def global_correct(image, template, dims, parameters):
 
     return new_image.flatten()  
 
+
 def make_corrections(images, template, dims, parameters): 
     ''' Do a global and a loc correction of a cluster of images'''
 
@@ -625,6 +632,7 @@ def make_corrections(images, template, dims, parameters):
         img_loc = tile_and_correct(img_glob, template, dims, parameters)        
         images[i] = img_loc
     return images
+
 
 def map_function(procs, nb_splits, chunk_movie, template, dims, parameters): 
     ''' Do multiprocessing'''    
@@ -641,7 +649,6 @@ def map_function(procs, nb_splits, chunk_movie, template, dims, parameters):
 
     return tmp
 
-
 def normcorre(fnames, procs, parameters):
     """
         see 
@@ -656,7 +663,7 @@ def normcorre(fnames, procs, parameters):
     #################################################################################################
     video_info = None
     main_name, file_extension = os.path.splitext(fnames[0])    
-
+    
     #fnames is the name of the file we will use 
     if file_extension == '.hdf5' : 
         hdf_mov = hd.File(fnames[0], 'r+')
@@ -689,7 +696,7 @@ def normcorre(fnames, procs, parameters):
     # 2. Estimate template from first n frame
     #################################################################################################
     template   = get_template(hdf_mov['movie'], dims, start = 0, duration = 500)
-
+    
     #################################################################################################
     # 3. run motion correction / update template
     #################################################################################################    
@@ -702,8 +709,7 @@ def normcorre(fnames, procs, parameters):
     coeff_euc = block_size//chunk_size # how many whole chunk there is in a block
     new_block = chunk_size*coeff_euc
     block_starts = np.arange(0,duration,new_block) 
-  
-   
+       
     for i in range(parameters['nb_round']): # loop on the movie
         for start_block in tqdm(block_starts): # for each block
             chunk_starts_loc = np.arange(start_block,start_block+new_block,chunk_size)
