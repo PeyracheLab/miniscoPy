@@ -52,7 +52,9 @@ import sys
 import h5py as hd
 from IPython.core.debugger import Pdb
 from copy import copy
+from numba import jit
 from miniscopy.base.sima_functions import *
+from time import time
 
 
 def get_vector_field_image (folder_name,shift_appli, parameters):
@@ -238,102 +240,6 @@ def get_max_fluo(img, parameters) :
 
     
     return max_fluo, mf 
-
-
-def low_pass_filter_space(img_orig, filter_size):
-    """ Filter a 2D image
-
-    Parameters : 
-    -img_orig : ndarray, the original image.
-    -filter_size : the size of the gaussian kernel to filter the whole field of view.
-    
-    Return : 
-    - filtered image"""
-
-    gSig_filt = (filter_size,filter_size)
-    ksize = tuple([(3 * i) // 2 * 2 + 1 for i in gSig_filt])
-    ker = cv2.getGaussianKernel(ksize[0], gSig_filt[0])
-    ker2D = ker.dot(ker.T)
-    nz = np.nonzero(ker2D >= ker2D[:, 0].max())
-    zz = np.nonzero(ker2D < ker2D[:, 0].max())
-    ker2D[nz] -= ker2D[nz].mean()
-    ker2D[zz] = 0
-    return cv2.filter2D(np.array(img_orig, dtype=np.float32), -1, ker2D, borderType=cv2.BORDER_REFLECT)
-
-
-def get_video_info(files):
-    """ In order to get the name, duration, start and end of each video
-    
-    Parameters:
-    -files : the pathe where ther is all the video (.avi)
-    
-    Returns:
-    -videos : dictionnary of the videos from the miniscopes
-    -video_info : DataFrame of informations about the video
-    -dimension (h,w) of each frame """
-
-    video_info  = pd.DataFrame(index = np.arange(len(files)), columns = ['file_name', 'start', 'end', 'duration'])
-    videos      = dict.fromkeys(files) # dictionnary creation
-    for f in files:
-        num                                 = int(re.findall(r'\d+', f)[-1])-1 
-        video_info.loc[num,'file_name']     = f
-        video                               = av.open(f)
-        stream                              = next(s for s in video.streams if s.type == 'video') 
-        video_info.loc[num, 'duration']     = stream.duration
-        videos[f]                           = video
-
-    video_info['start']     = video_info['duration'].cumsum()-video_info['duration']
-    video_info['end']       = video_info['duration'].cumsum()
-    video_info              = video_info.set_index(['file_name'], append = True)
-
-    return video_info, videos, (stream.format.height, stream.format.width)
-
-
-
-def get_hdf_file(videos, video_info, dims, save_original, **kwargs):
-    """
-    In order to convert the video into a HDF5 file.
-    Parameters : 
-    -videos : dictionnary of the videos from the miniscopes
-    -video_info : DataFrame of informations about the video
-    -dims : dimension (h,w) of each frame
-    
-    Returns :
-    -file : HDF5 file"""
-    hdf_mov     = os.path.split(video_info.index.get_level_values(1)[0])[0] + '/' + 'motion_corrected.hdf5'
-    file        = hd.File(hdf_mov, "w")
-    movie       = file.create_dataset('movie', shape = (video_info['duration'].sum(), np.prod(dims)), dtype = np.float32, chunks=True)
-    if save_original:
-        original = file.create_dataset('original', shape = (video_info['duration'].sum(), np.prod(dims)), dtype = np.float32, chunks=True)
-    for v in tqdm(videos.keys()):
-        offset  = int(video_info['start'].xs(v, level=1))
-        stream  = next(s for s in videos[v].streams if s.type == 'video')        
-        tmp     = np.zeros((video_info['duration'].xs(v, level=1).values[0], np.prod(dims)), dtype=np.float32)
-        for i, packet in enumerate(videos[v].demux(stream)):
-            frame           = packet.decode()[0].to_ndarray(format = 'bgr24')[:,:,0].astype(np.float32)
-            tmp[i]          = frame.reshape(np.prod(dims))
-            if i+1 == stream.duration : break                        
-            
-        movie[offset:offset+len(tmp),:] = tmp[:]
-        if save_original:
-            original[offset:offset+len(tmp),:] = tmp[:]
-        del tmp
-    if save_original:
-        del original
-    del movie 
-
-    file.attrs['folder'] = os.path.split(video_info.index.get_level_values(1)[0])[0]
-    file.attrs['filename'] = hdf_mov
-    return file
-
-
-def get_template(movie, dims, start = 0, duration = 1):
-    if np.isnan(movie[start:start+duration]).sum(): 
-        template     = np.nanmedian(movie[start:start+duration], axis = 0).reshape(dims)
-    else :
-        template     = np.median(movie[start:start+duration], axis = 0).reshape(dims)
-    return template
-
 
 def get_patches_position(dims, strides, overlaps, **kwargs):
     ''' Return a matrix of the position of each patches without overlapping, the dimension of each patch and the dimension of this matrix 
@@ -575,80 +481,217 @@ def tile_and_correct(image, template, dims, parameters):
 
     return new_image.flatten()
 
+###################################################################################
+# GLOBAL CORRECTION
+###################################################################################
+@jit(nopython=True)
+def low_pass_filter_space(img_orig, filter_size):
+    """ Filter a 2D image
 
-def global_correct(image, template, dims, parameters):
+    Parameters : 
+    -img_orig : ndarray, the original image.
+    -filter_size : the size of the gaussian kernel to filter the whole field of view.
+    
+    Return : 
+    - filtered image
+
+    """
+    ksize = (3*filter_size)//2 * 2 + 1
+    x = np.arange(ksize)
+    g = np.power(x-((ksize-1)/2), 2)
+    g = -(g/(2*(filter_size**2.0)))
+    g = np.exp(g)
+    ker = g/g.sum()    
+    ker = np.atleast_2d(ker).T
+    ker2D = ker.dot(ker.T)
+    vmax = np.max(ker2D[0])
+    kdims = ker2D.shape    
+    ker2D = np.ravel(ker2D)
+    nz = ker2D>=vmax
+    zz = ker2D<vmax
+    nzall = ker2D[nz]
+    mk = np.mean(nzall)
+    ker2D[nz] = ker2D[nz] - mk
+    ker2D[zz] = 0
+    ker2D = ker2D.reshape(kdims)
+
+    offset = (ksize-1)//2
+    pad_image = np.ones((img_orig.shape[0]+offset*2,img_orig.shape[1]+offset*2))
+    # pad_image[offset:-offset,offset:-offset] = img_orig[:]
+    # pad_image[0:offset,offset:-offset] = img_orig[0:offset,:]
+
+    # pad_image = np.pad(img_orig, offset, mode = 'reflect')
+    new_image = np.zeros_like(img_orig)    
+    for i in range(offset,offset+img_orig.shape[0]):
+        for j in range(offset,offset+img_orig.shape[1]):
+            tmp = ker2D * pad_image[i-offset:i+offset+1,j-offset:j+offset+1]
+            new_image[i-offset,j-offset] = np.sum(tmp)
+
+    # new_image = cv2.filter2D(np.array(img_orig, dtype=np.float32), -1, ker2D, borderType=cv2.BORDER_REFLECT)    
+
+    return new_image
+
+def global_correct(images, template, dims, max_dev, filter_size):
     """ 
-        Do a global correction of the image """
+        Do a global correction of a set of images 
+        matchTemplate and low pass filter space takes the longest time
+        8 second for 200 frames
+    """     
+    template_crop   = template.copy()
+    template_crop   = template_crop[max_dev:-max_dev,max_dev:-max_dev]
+    filtered_template = low_pass_filter_space(template_crop, filter_size)
 
-    max_dev = parameters['max_deviation_rigid']
+    # to stock all the results of the convolution
+    res_all         = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1))
+    max_loc         = np.zeros((images.shape[0], 2), dtype = np.int)
+    for i in range(images.shape[0]):
+        image           = images[i]
+        image           = image.reshape(dims)
+        filtered_image  = low_pass_filter_space(image, filter_size)    
+        # call opencv match template    
+        res             = cv2.matchTemplate(filtered_image, filtered_template, cv2.TM_CCOEFF_NORMED)        
+        top_left        = cv2.minMaxLoc(res)[3] #get the maximum location
+        res_all[i]      = res
+        max_loc[i]      = np.array(top_left)
+
+    # computing the shift    
+    sh_x_n = np.zeros(max_loc.shape[0])
+    sh_y_n = np.zeros(max_loc.shape[0])
+    # if max is internal, check for subpixel shift using gaussian peak registration        
+    index = np.logical_and(max_loc > 0, max_loc < 2*max_dev-1)
+    index = index.all(1)
+    if np.any(index):
+        ## from here x and y are reversed in naming convention         
+        ish_x = max_loc[index,1]
+        ish_y = max_loc[index,0]
+        ires  = res_all[index]        
+        idx1 = np.ravel_multi_index((np.arange(ish_x.shape[0]), ish_y-1, ish_x), dims = ires.shape)
+        idx2 = np.ravel_multi_index((np.arange(ish_x.shape[0]), ish_y+1, ish_x), dims = ires.shape)
+        idx3 = np.ravel_multi_index((np.arange(ish_x.shape[0]), ish_y, ish_x-1), dims = ires.shape)
+        idx4 = np.ravel_multi_index((np.arange(ish_x.shape[0]), ish_y, ish_x+1), dims = ires.shape)
+        idx5 = np.ravel_multi_index((np.arange(ish_x.shape[0]), ish_y, ish_x), dims = ires.shape)
+        ires  = ires.flatten()
+        log_xm1_y = np.log(ires[idx1])
+        log_xp1_y = np.log(ires[idx2])
+        log_x_ym1 = np.log(ires[idx3])
+        log_x_yp1 = np.log(ires[idx4])
+        four_log_xy = 4*np.log(ires[idx5])
+        sh_x_n[index] = -(ish_x - max_dev + (log_xm1_y - log_xp1_y) / (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
+        sh_y_n[index] = -(ish_y - max_dev + (log_x_ym1 - log_x_yp1) / (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
+    if np.any(~index):
+        sh_x_n[~index] = -(max_loc[~index,1] - max_dev)
+        sh_y_n[~index] = -(max_loc[~index,0] - max_dev)
     
-    image           = image.reshape(dims)    
-    template_uncrop = template.copy()
-    template        = template_uncrop[max_dev:-max_dev,max_dev:-max_dev]
-
-    # filter the image and the template with a large filter 
-    filtered_image = low_pass_filter_space(image.copy(), parameters['filter_size'])
-    filtered_template = low_pass_filter_space(template.copy(), parameters['filter_size'])
-
-    # call opencv match template    
-    res = cv2.matchTemplate(filtered_image, filtered_template, cv2.TM_CCOEFF_NORMED)  
-    avg_metric = np.mean(res)
-    top_left = cv2.minMaxLoc(res)[3] #get the maximum location
-
+    interpolation = cv2.INTER_LINEAR        
+    for i in range(images.shape[0]):
+        M   = np.float32([[1, 0, sh_y_n[i]], [0, 1, sh_x_n[i]]])
+        image = images[i]
+        image = image.reshape(dims)
+        min_, max_ = np.min(image), np.max(image)    
+        new_image = cv2.warpAffine(image, M, dims[::-1], flags = interpolation, borderMode=cv2.BORDER_REFLECT) 
+        new_image = new_image.flatten()        
+        new_image = np.clip(new_image, min_, max_)        
+        images[i] = new_image
     
-    # FROM PYFLUO https://github.com/bensondaled/pyfluo
-    ## from here x and y are reversed in naming convention 
-    sh_y,sh_x = top_left
-    
-    if (0 < top_left[1] < 2 * max_dev-1) and (0 < top_left[0] < 2 * max_dev-1):
-        ms_h = ms_w = max_dev
-        # if max is internal, check for subpixel shift using gaussian peak registration        
-        log_xm1_y = np.log(res[sh_x-1,sh_y])          
-        log_xp1_y = np.log(res[sh_x+1,sh_y])             
-        log_x_ym1 = np.log(res[sh_x,sh_y-1])             
-        log_x_yp1 = np.log(res[sh_x,sh_y+1])             
-        four_log_xy = 4*np.log(res[sh_x,sh_y])
-        sh_x_n = -(sh_x - ms_h + (log_xm1_y - log_xp1_y) / (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
-        sh_y_n = -(sh_y - ms_w + (log_x_ym1 - log_x_yp1) / (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
-    else:
-        sh_x_n = -(sh_x - max_dev)
-        sh_y_n = -(sh_y - max_dev)    
-    
-    # apply shift using subpixels adjustement
-    interpolation = cv2.INTER_LINEAR
-    M   = np.float32([[1, 0, sh_y_n], [0, 1, sh_x_n]])
-    min_, max_ = np.min(image), np.max(image)
-    new_image = cv2.warpAffine(image, M, dims[::-1], flags = interpolation, borderMode=cv2.BORDER_REFLECT) 
-    new_image = np.clip(new_image, min_, max_)
-
-    return new_image.flatten()  
-
-
-def make_corrections(images, template, dims, parameters): 
-    ''' Do a global and a loc correction of a cluster of images'''
-
-    for i, img in enumerate(images):
-        img_glob = global_correct(img, template, dims, parameters)
-        img_loc = tile_and_correct(img_glob, template, dims, parameters)        
-        images[i] = img_loc
     return images
 
+###################################################################################
+# MAIN LOOP
+###################################################################################
+def make_corrections(movie, start, end, template, dims, parameters): 
+    """ 
+    Do a global and a loc correction of a cluster of images
+    """
+    images = movie[start:end]
+    # global correct
+    images = global_correct(images, template, dims, parameters['max_deviation_rigid'], parameters['filter_size'])
+    # # local correct
+    # images = tile_and_correct(images, template, dims, parameters)
+    movie[start:end] = images[:]
+    return
 
-def map_function(procs, nb_splits, chunk_movie, template, dims, parameters): 
-    ''' Do multiprocessing'''    
+###################################################################################
+# TEMPLATE
+###################################################################################
+def get_template(movie, dims, start = 0, duration = 1):
+    chunk = movie[start:start+duration]
+    has_nan = np.any(np.isnan(chunk))
+    if has_nan: 
+        template     = np.nanmedian(chunk, axis = 0)
+    else :
+        template     = np.median(chunk, axis = 0)
+    template = template.reshape(dims)
+    return template
 
-    if procs is not None:
-        pargs = zip(chunk_movie, [template]*nb_splits, [dims]*nb_splits, [parameters]*nb_splits)
-        if 'multiprocessing' in str(type(procs)):
-            tmp = procs.starmap_async(make_corrections, pargs).get() 
-        else:
-            tmp = procs.starmap_sync(make_corrections, pargs)            
-            procs.results.clear()                    
-    else:
-        tmp = list(map(make_corrections, chunk_movie, [template]*nb_splits, [dims]*nb_splits, [parameters]*nb_splits))
+###################################################################################
+# PREPROCESSING
+###################################################################################
+def get_video_info(files):
+    """ In order to get the name, duration, start and end of each video
+    
+    Parameters:
+    -files : the pathe where there is all the video (.avi)
+    
+    Returns:
+    -videos : dictionnary of the videos from the miniscopes
+    -video_info : DataFrame of informations about the video
+    -dimension (h,w) of each frame """
 
-    return tmp
+    video_info  = pd.DataFrame(index = np.arange(len(files)), columns = ['file_name', 'start', 'end', 'duration'])
+    videos      = dict.fromkeys(files) # dictionnary creation
+    for f in files:
+        num                                 = int(re.findall(r'\d+', f)[-1])-1 
+        video_info.loc[num,'file_name']     = f
+        video                               = av.open(f)
+        stream                              = next(s for s in video.streams if s.type == 'video') 
+        video_info.loc[num, 'duration']     = stream.duration
+        videos[f]                           = video
 
+    video_info['start']     = video_info['duration'].cumsum()-video_info['duration']
+    video_info['end']       = video_info['duration'].cumsum()
+    video_info              = video_info.set_index(['file_name'], append = True)
+
+    return video_info, videos, (stream.format.height, stream.format.width)
+
+def get_hdf_file(videos, video_info, dims, save_original, **kwargs):
+    """
+    In order to convert the video into a HDF5 file.
+    Parameters : 
+    -videos : dictionnary of the videos from the miniscopes
+    -video_info : DataFrame of informations about the video
+    -dims : dimension (h,w) of each frame
+    
+    Returns :
+    -file : HDF5 file"""
+    hdf_mov     = os.path.split(video_info.index.get_level_values(1)[0])[0] + '/' + 'motion_corrected.hdf5'
+    file        = hd.File(hdf_mov, "w")
+    movie       = file.create_dataset('movie', shape = (video_info['duration'].sum(), np.prod(dims)), dtype = np.float32, chunks=True)
+    if save_original:
+        original = file.create_dataset('original', shape = (video_info['duration'].sum(), np.prod(dims)), dtype = np.float32, chunks=True)
+    for v in tqdm(videos.keys()):
+        offset  = int(video_info['start'].xs(v, level=1))
+        stream  = next(s for s in videos[v].streams if s.type == 'video')        
+        tmp     = np.zeros((video_info['duration'].xs(v, level=1).values[0], np.prod(dims)), dtype=np.float32)
+        for i, packet in enumerate(videos[v].demux(stream)):
+            frame           = packet.decode()[0].to_ndarray(format = 'bgr24')[:,:,0].astype(np.float32)
+            tmp[i]          = frame.reshape(np.prod(dims))
+            if i+1 == stream.duration : break                        
+            
+        movie[offset:offset+len(tmp),:] = tmp[:]
+        if save_original:
+            original[offset:offset+len(tmp),:] = tmp[:]
+        del tmp
+    if save_original:
+        del original
+    del movie 
+
+    file.attrs['folder'] = os.path.split(video_info.index.get_level_values(1)[0])[0]
+    file.attrs['filename'] = hdf_mov
+    return file
+
+###################################################################################
+# MAIN FUNCTION
+###################################################################################
 def normcorre(fnames, procs, parameters):
     """
         see 
@@ -690,45 +733,3 @@ def normcorre(fnames, procs, parameters):
     else : 
         print ("Error : File extension not accepted") 
         sys.exit()
-
-    
-    #################################################################################################
-    # 2. Estimate template from first n frame
-    #################################################################################################
-    template   = get_template(hdf_mov['movie'], dims, start = 0, duration = 500)
-    
-    #################################################################################################
-    # 3. run motion correction / update template
-    #################################################################################################    
-     
-    chunk_size  = hdf_mov['movie'].chunks[0] 
-    chunk_starts_glob = np.arange(0, duration, chunk_size)
-    nb_splits   = os.cpu_count() 
-
-    block_size = parameters['block_size'] 
-    coeff_euc = block_size//chunk_size # how many whole chunk there is in a block
-    new_block = chunk_size*coeff_euc
-    block_starts = np.arange(0,duration,new_block) 
-       
-    for i in range(parameters['nb_round']): # loop on the movie
-        for start_block in tqdm(block_starts): # for each block
-            chunk_starts_loc = np.arange(start_block,start_block+new_block,chunk_size)
-            for start_chunk in chunk_starts_loc: # for each chunk                
-                chunk_movie = hdf_mov['movie'][start_chunk:start_chunk+chunk_size]
-                index = np.arange(chunk_movie.shape[0])
-                splits_index = np.array_split(index, nb_splits)
-                list_chunk_movie = [] #split of a chunk
-                for idx in splits_index:
-                    list_chunk_movie.append(chunk_movie[idx]) #each split of a chunk will be process in a different processor of the computer
-
-                new_chunk = map_function(procs, nb_splits, list_chunk_movie, template, dims, parameters)
-                new_chunk_arr = np.vstack(new_chunk)
-                hdf_mov['movie'][start_chunk:start_chunk+chunk_size] = np.array(new_chunk_arr) #update of the chunk
-                # if np.isinf(new_chunk_arr).sum(): Pdb().set_trace()
-
-            template = get_template(hdf_mov['movie'], dims, start = start_block, duration = new_block) #update the template after each block 
-    
-    hdf_mov['movie'].attrs['dims'] = dims
-    hdf_mov['movie'].attrs['duration'] = duration 
-
-    return hdf_mov, video_info
