@@ -52,7 +52,7 @@ import sys
 import h5py as hd
 from IPython.core.debugger import Pdb
 from copy import copy
-from numba import jit,njit,int32,int64
+from numba import jit,prange
 from miniscopy.base.sima_functions import *
 from time import time
 import scipy
@@ -561,50 +561,32 @@ def low_pass_filter_space(images, kernel, offset, h, w):
     
     return new_image
 
-def global_correct(images, template, dims, max_dev, filter_size):
+@jit(nopython=True, parallel = True)
+def match_template(images, template, max_dev):
     """ 
-        Do a global correction of a set of images 
-        matchTemplate and low pass filter space takes the longest time
-        8 second for 200 frames
+        Perform matching template similar to opencv
+        with TM_CCOEFF_NORMED
     """
-    t1 = time()         
-    # kernel for filtering
-    kernel  = get_kernel(filter_size)
-    ksize   = kernel.shape[0]
-    offset  = (ksize-1)//2
-    t2 = time()
-    # preparing the template
-    template_crop   = template.copy()
-    template_crop   = template_crop[max_dev:-max_dev,max_dev:-max_dev]
-    tdims           = template_crop.shape
-    template_crop   = template_crop[np.newaxis]    
-    template_padded = pad_array(template_crop, offset)
-    t3 = time()
-    # padding the images
-    images = images.reshape(images.shape[0], dims[0], dims[1])
-    images_padded   = pad_array(images, offset)
-    t4 = time()
-    # filtering images and template
-    filtered_template = low_pass_filter_space(template_padded, kernel, offset, tdims[0], tdims[1])
-    filtered_images = low_pass_filter_space(images_padded, kernel, offset, dims[0], dims[1])
-    t5 = time()
-    # to stock all the results of the convolution
-    res_all         = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1))
-    max_loc         = np.zeros((images.shape[0], 2), dtype = np.int)
-    filtered_template = np.squeeze(filtered_template, 0)
-    for i in range(images.shape[0]):
-        # call opencv match template
-        res             = cv2.matchTemplate(filtered_images[i], filtered_template, cv2.TM_CCOEFF_NORMED)        
-        top_left        = cv2.minMaxLoc(res)[3] #get the maximum location
-        res_all[i]      = res
-        max_loc[i]      = np.array(top_left)
-    t6 = time()
-    # computing the shift    
+    res_all     = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1), dtype = np.float32)    
+    factor      = np.sum(np.power(template, 2.0))
+    for i in range(images.shape[0]):        
+        res = res_all[i]
+        for j in range(max_dev*2+1):
+            for k in range(max_dev*2+1):
+                tmp = images[i,j:j+template.shape[0],k:k+template.shape[1]]
+                res[j,k] = np.sum(tmp*template)/np.sqrt(np.sum(np.power(tmp,2.0))*factor)
+        
+    return res_all
+
+def estimate_shifts(res_all, max_loc, max_dev):
+    """
+        Estimate shifts 
+    """
     sh_x_n = np.zeros(max_loc.shape[0])
     sh_y_n = np.zeros(max_loc.shape[0])
     # if max is internal, check for subpixel shift using gaussian peak registration        
-    index = np.logical_and(max_loc > 0, max_loc < 2*max_dev-1)
-    index = index.all(1)
+    tmp = np.logical_and(max_loc > 0, max_loc < 2*max_dev-1)
+    index = tmp[:,0] * tmp[:,1]
     if np.any(index):
         ## from here x and y are reversed in naming convention         
         ish_x = max_loc[index,1]
@@ -625,8 +607,55 @@ def global_correct(images, template, dims, max_dev, filter_size):
         sh_y_n[index] = -(ish_y - max_dev + (log_x_ym1 - log_x_yp1) / (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
     if np.any(~index):
         sh_x_n[~index] = -(max_loc[~index,1] - max_dev)
-        sh_y_n[~index] = -(max_loc[~index,0] - max_dev)    
+        sh_y_n[~index] = -(max_loc[~index,0] - max_dev)
+
+    return sh_x_n, sh_y_n
+
+def global_correct(images, template, dims, max_dev, filter_size):
+    """ 
+        Do a global correction of a set of images 
+        matchTemplate and low pass filter space takes the longest time
+        8 second for 200 frames
+    """
+    t1 = time()         
+
+    # kernel for filtering
+    kernel  = get_kernel(filter_size)
+    ksize   = kernel.shape[0]
+    offset  = (ksize-1)//2
+    t2 = time()
+
+    # preparing the template
+    template_crop   = template.copy()
+    template_crop   = template_crop[max_dev:-max_dev,max_dev:-max_dev]
+    tdims           = template_crop.shape
+    template_crop   = template_crop[np.newaxis]    
+    template_padded = pad_array(template_crop, offset)
+    t3 = time()
+
+    # padding the images
+    images = images.reshape(images.shape[0], dims[0], dims[1])
+    images_padded   = pad_array(images, offset)
+    t4 = time()
+
+    # filtering images and template
+    filtered_template = low_pass_filter_space(template_padded, kernel, offset, tdims[0], tdims[1])
+    filtered_images = low_pass_filter_space(images_padded, kernel, offset, dims[0], dims[1])
+    t5 = time()
+
+    # match template
+    filtered_template = np.squeeze(filtered_template, 0)
+    res_all = match_template(filtered_images, filtered_template, max_dev)
+    max_loc     = np.zeros((images.shape[0], 2), dtype = np.int)
+    for i in range(images.shape[0]):
+        res = res_all[i]
+        max_loc[i] = np.array(np.unravel_index(np.argmax(res.flatten()), res.shape))
+    t6 = time()
+
+    # computing the shift    
+    sh_x_n, sh_y_n = estimate_shifts(res_all, max_loc, max_dev)
     t7 = time()
+
     # shifting the image
     interpolation = cv2.INTER_LINEAR        
     for i in range(images.shape[0]):
@@ -637,8 +666,11 @@ def global_correct(images, template, dims, max_dev, filter_size):
         new_image = np.clip(new_image, min_, max_)        
         images[i] = new_image
     t8 = time()
+
+    # flattening the images
     images = images.reshape(images.shape[0], np.prod(dims))
     t9 = time()
+
     print("kermel for filtering", t2 - t1)
     print("preparing the template", t3 - t2)
     print("padding the images", t4 - t3)

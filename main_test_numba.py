@@ -51,7 +51,49 @@ for r in range(parameters['nb_round']): # loop on the movie
 		t2 = time()
 		make_corrections(hdf_mov['movie'], start_chunk, start_chunk+chunk_size, template, dims, parameters) 
 		print(time()-t2)
-		sys.exit()
+		# movie = hdf_mov['movie']
+		# images = movie[start_chunk:start_chunk+chunk_size]
+		# max_dev = parameters['max_deviation_rigid']
+		# filter_size = parameters['filter_size']
+		
+		# t1 = time()         
+
+		# # kernel for filtering
+		# kernel  = get_kernel(filter_size)
+		# ksize   = kernel.shape[0]
+		# offset  = (ksize-1)//2
+		# t2 = time()
+
+		# # preparing the template
+		# template_crop   = template.copy()
+		# template_crop   = template_crop[max_dev:-max_dev,max_dev:-max_dev]
+		# tdims           = template_crop.shape
+		# template_crop   = template_crop[np.newaxis]    
+		# template_padded = pad_array(template_crop, offset)
+		# t3 = time()
+
+		# # padding the images
+		# images = images.reshape(images.shape[0], dims[0], dims[1])
+		# images_padded   = pad_array(images, offset)
+		# t4 = time()
+
+		# # filtering images and template
+		# filtered_template = low_pass_filter_space(template_padded, kernel, offset, tdims[0], tdims[1])
+		# filtered_images = low_pass_filter_space(images_padded, kernel, offset, dims[0], dims[1])
+		# t5 = time()
+
+		# # match template
+		# filtered_template = np.squeeze(filtered_template, 0)
+		# res_all = match_template(filtered_images, filtered_template, max_dev)
+		# max_loc     = np.zeros((images.shape[0], 2), dtype = np.int)
+		# for i in range(images.shape[0]):
+		#     res = res_all[i]
+		#     max_loc[i] = np.array(np.unravel_index(np.argmax(res.flatten()), res.shape))
+		# t6 = time()
+
+		# sh_x_n, sh_y_n = estimate_shifts(res_all, max_loc, max_dev)
+
+		# sys.exit()
 
 print("Global motion correction", time()-t1)
 
