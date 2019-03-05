@@ -52,9 +52,10 @@ import sys
 import h5py as hd
 from IPython.core.debugger import Pdb
 from copy import copy
-from numba import jit
+from numba import jit,njit,int32,int64
 from miniscopy.base.sima_functions import *
 from time import time
+import scipy
 
 
 def get_vector_field_image (folder_name,shift_appli, parameters):
@@ -484,17 +485,37 @@ def tile_and_correct(image, template, dims, parameters):
 ###################################################################################
 # GLOBAL CORRECTION
 ###################################################################################
-@jit(nopython=True)
-def low_pass_filter_space(img_orig, filter_size):
-    """ Filter a 2D image
+@jit(nopython=True, parallel = True) # no big improvement here ~ 194 ms for 200 images
+def pad_array(images, offset):
+    """
+        Numba 0.42.0 does not support padding
+        Trying here in reflect mode
+        images should be 3d
+    """
+    h = images.shape[1]
+    w = images.shape[2]
+    pad_images = np.zeros((images.shape[0], h+2*offset, w+2*offset), dtype = np.float32)
+    for i in range(images.shape[0]):
+        # image = np.zeros((h,w), dtype=np.float32)
+        image = images[i]#.reshape((h,w))
+        # image = image.reshape((h,w))
+        tmp  = pad_images[i]
+        tmp[offset:-offset,offset:-offset] = image
+        tmp[0:offset,offset:-offset] = image[1:1+offset][::-1] # upper part
+        tmp[-offset:,offset:-offset] = image[-offset-1:-1][::-1] # lower part
+        tmp[offset:-offset,0:offset] = image[:,1:1+offset][:,::-1] # left part
+        tmp[offset:-offset,-offset:] = image[:,-offset-1:-1][:,::-1] # right part
+        tmp[0:offset,0:offset] = image[0:offset,0:offset][::-1,::-1] # upper left corner
+        tmp[0:offset,-offset:] = image[0:offset,-offset:][::-1,::-1] # upper right corner
+        tmp[-offset:,-offset:] = image[-offset:,-offset:][::-1,::-1] # lower rught corner
+        tmp[-offset:,0:offset] = image[-offset:,0:offset][::-1,::-1] # lower left corner
+    return pad_images
 
-    Parameters : 
-    -img_orig : ndarray, the original image.
-    -filter_size : the size of the gaussian kernel to filter the whole field of view.
-    
-    Return : 
-    - filtered image
-
+@jit(nopython=True) # 6 microseconds versus 45 microseconds without
+def get_kernel(filter_size):
+    """
+        Get a gaussian kernel 
+        Similar to opencv 
     """
     ksize = (3*filter_size)//2 * 2 + 1
     x = np.arange(ksize)
@@ -514,21 +535,30 @@ def low_pass_filter_space(img_orig, filter_size):
     ker2D[nz] = ker2D[nz] - mk
     ker2D[zz] = 0
     ker2D = ker2D.reshape(kdims)
+    ker2D = ker2D.astype(np.float32)
+    return ker2D
 
-    offset = (ksize-1)//2
-    pad_image = np.ones((img_orig.shape[0]+offset*2,img_orig.shape[1]+offset*2))
-    # pad_image[offset:-offset,offset:-offset] = img_orig[:]
-    # pad_image[0:offset,offset:-offset] = img_orig[0:offset,:]
+# @jit(nopython=True)#, parallel=True)
+def low_pass_filter_space(images, kernel, offset, h, w):
+    """ Filter a 2D image
 
-    # pad_image = np.pad(img_orig, offset, mode = 'reflect')
-    new_image = np.zeros_like(img_orig)    
-    for i in range(offset,offset+img_orig.shape[0]):
-        for j in range(offset,offset+img_orig.shape[1]):
-            tmp = ker2D * pad_image[i-offset:i+offset+1,j-offset:j+offset+1]
-            new_image[i-offset,j-offset] = np.sum(tmp)
+    Parameters : 
+    -img_orig : ndarray, the original image.
+    -kernel
+    
+    Return : 
+    - filtered image
 
-    # new_image = cv2.filter2D(np.array(img_orig, dtype=np.float32), -1, ker2D, borderType=cv2.BORDER_REFLECT)    
-
+    """
+    n = images.shape[0]
+    pdims = (images.shape[1], images.shape[2])
+    new_image = np.zeros((n, h, w), dtype = np.float32)
+    for i in range(images.shape[0]):
+        tmp1 = np.fft.rfftn(images[i], pdims) * np.fft.rfftn(kernel, pdims)
+        tmp2 = np.fft.irfftn(tmp1)
+        # tmp = scipy.signal.fftconvolve(images[i], kernel, mode = 'same')
+        new_image[i] = tmp2[offset*2:,offset*2:]
+    
     return new_image
 
 def global_correct(images, template, dims, max_dev, filter_size):
@@ -536,24 +566,39 @@ def global_correct(images, template, dims, max_dev, filter_size):
         Do a global correction of a set of images 
         matchTemplate and low pass filter space takes the longest time
         8 second for 200 frames
-    """     
+    """
+    t1 = time()         
+    # kernel for filtering
+    kernel  = get_kernel(filter_size)
+    ksize   = kernel.shape[0]
+    offset  = (ksize-1)//2
+    t2 = time()
+    # preparing the template
     template_crop   = template.copy()
     template_crop   = template_crop[max_dev:-max_dev,max_dev:-max_dev]
-    filtered_template = low_pass_filter_space(template_crop, filter_size)
-
+    tdims           = template_crop.shape
+    template_crop   = template_crop[np.newaxis]    
+    template_padded = pad_array(template_crop, offset)
+    t3 = time()
+    # padding the images
+    images = images.reshape(images.shape[0], dims[0], dims[1])
+    images_padded   = pad_array(images, offset)
+    t4 = time()
+    # filtering images and template
+    filtered_template = low_pass_filter_space(template_padded, kernel, offset, tdims[0], tdims[1])
+    filtered_images = low_pass_filter_space(images_padded, kernel, offset, dims[0], dims[1])
+    t5 = time()
     # to stock all the results of the convolution
     res_all         = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1))
     max_loc         = np.zeros((images.shape[0], 2), dtype = np.int)
+    filtered_template = np.squeeze(filtered_template, 0)
     for i in range(images.shape[0]):
-        image           = images[i]
-        image           = image.reshape(dims)
-        filtered_image  = low_pass_filter_space(image, filter_size)    
-        # call opencv match template    
-        res             = cv2.matchTemplate(filtered_image, filtered_template, cv2.TM_CCOEFF_NORMED)        
+        # call opencv match template
+        res             = cv2.matchTemplate(filtered_images[i], filtered_template, cv2.TM_CCOEFF_NORMED)        
         top_left        = cv2.minMaxLoc(res)[3] #get the maximum location
         res_all[i]      = res
         max_loc[i]      = np.array(top_left)
-
+    t6 = time()
     # computing the shift    
     sh_x_n = np.zeros(max_loc.shape[0])
     sh_y_n = np.zeros(max_loc.shape[0])
@@ -580,19 +625,28 @@ def global_correct(images, template, dims, max_dev, filter_size):
         sh_y_n[index] = -(ish_y - max_dev + (log_x_ym1 - log_x_yp1) / (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
     if np.any(~index):
         sh_x_n[~index] = -(max_loc[~index,1] - max_dev)
-        sh_y_n[~index] = -(max_loc[~index,0] - max_dev)
-    
+        sh_y_n[~index] = -(max_loc[~index,0] - max_dev)    
+    t7 = time()
+    # shifting the image
     interpolation = cv2.INTER_LINEAR        
     for i in range(images.shape[0]):
         M   = np.float32([[1, 0, sh_y_n[i]], [0, 1, sh_x_n[i]]])
         image = images[i]
-        image = image.reshape(dims)
         min_, max_ = np.min(image), np.max(image)    
-        new_image = cv2.warpAffine(image, M, dims[::-1], flags = interpolation, borderMode=cv2.BORDER_REFLECT) 
-        new_image = new_image.flatten()        
+        new_image = cv2.warpAffine(image, M, dims[::-1], flags = interpolation, borderMode=cv2.BORDER_REFLECT)         
         new_image = np.clip(new_image, min_, max_)        
         images[i] = new_image
-    
+    t8 = time()
+    images = images.reshape(images.shape[0], np.prod(dims))
+    t9 = time()
+    print("kermel for filtering", t2 - t1)
+    print("preparing the template", t3 - t2)
+    print("padding the images", t4 - t3)
+    print("filtering ", t5 - t4)
+    print("match template", t6 - t5)
+    print("computing the shift", t7 - t6)
+    print("shifting the image", t8 - t7)
+    print("reshaping ", t9 - t8)
     return images
 
 ###################################################################################
@@ -733,3 +787,49 @@ def normcorre(fnames, procs, parameters):
     else : 
         print ("Error : File extension not accepted") 
         sys.exit()
+
+    #################################################################################################
+    # 2. Estimate template from first n frame
+    #################################################################################################
+    template   = get_template(hdf_mov['movie'], dims, start = 0, duration = 500)
+    
+    #################################################################################################
+    # 3. run motion correction / update template
+    #################################################################################################    
+    chunk_size      = parameters['block_size']- (parameters['block_size']%hdf_mov['movie'].chunks[0])
+    chunk_starts    = np.arange(0,duration,chunk_size) 
+
+
+
+     
+    chunk_size  = hdf_mov['movie'].chunks[0] 
+    chunk_starts_glob = np.arange(0, duration, chunk_size)
+    nb_splits   = os.cpu_count() 
+
+    block_size = parameters['block_size'] 
+    coeff_euc = block_size//chunk_size # how many whole chunk there is in a block
+    new_block = chunk_size*coeff_euc
+    block_starts = np.arange(0,duration,new_block) 
+       
+    for i in range(parameters['nb_round']): # loop on the movie
+        for start_block in tqdm(block_starts): # for each block
+            chunk_starts_loc = np.arange(start_block,start_block+new_block,chunk_size)
+            for start_chunk in chunk_starts_loc: # for each chunk                
+                chunk_movie = hdf_mov['movie'][start_chunk:start_chunk+chunk_size]
+                index = np.arange(chunk_movie.shape[0])
+                splits_index = np.array_split(index, nb_splits)
+                list_chunk_movie = [] #split of a chunk
+                for idx in splits_index:
+                    list_chunk_movie.append(chunk_movie[idx]) #each split of a chunk will be process in a different processor of the computer
+
+                new_chunk = map_function(procs, nb_splits, list_chunk_movie, template, dims, parameters)
+                new_chunk_arr = np.vstack(new_chunk)
+                hdf_mov['movie'][start_chunk:start_chunk+chunk_size] = np.array(new_chunk_arr) #update of the chunk
+                # if np.isinf(new_chunk_arr).sum(): Pdb().set_trace()
+
+            template = get_template(hdf_mov['movie'], dims, start = start_block, duration = new_block) #update the template after each block 
+    
+    hdf_mov['movie'].attrs['dims'] = dims
+    hdf_mov['movie'].attrs['duration'] = duration 
+
+    return hdf_mov, video_info
