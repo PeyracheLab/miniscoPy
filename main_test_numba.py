@@ -28,12 +28,12 @@ parameters['motion_correction']['nb_round'] = 1
 fnames = files
 parameters = parameters['motion_correction']
 parameters['block_size'] = 200
-# video_info, videos, dims = get_video_info(fnames)
-# hdf_mov       = get_hdf_file(videos, video_info, dims, parameters['save_original'])
+video_info, videos, dims = get_video_info(fnames)
+hdf_mov       = get_hdf_file(videos, video_info, dims, parameters['save_original'])
 # sys.exit()
 
 
-hdf_mov = hd.File('example_movies/motion_corrected.hdf5', 'r+')
+# hdf_mov = hd.File('example_movies/motion_corrected.hdf5', 'r+')
 duration = hdf_mov['movie'].shape[0]
 dims = (480,752)
 
@@ -93,7 +93,7 @@ for r in range(parameters['nb_round']): # loop on the movie
 
 		# sh_x_n, sh_y_n = estimate_shifts(res_all, max_loc, max_dev)
 
-		# sys.exit()
+		sys.exit()
 
 print("Global motion correction", time()-t1)
 

@@ -52,10 +52,13 @@ import sys
 import h5py as hd
 from IPython.core.debugger import Pdb
 from copy import copy
-from numba import jit,prange
+import numba
+from numba import jit
+from numba import cuda
 from miniscopy.base.sima_functions import *
 from time import time
-import scipy
+from scipy.interpolate import interp2d
+
 
 
 def get_vector_field_image (folder_name,shift_appli, parameters):
@@ -485,7 +488,7 @@ def tile_and_correct(image, template, dims, parameters):
 ###################################################################################
 # GLOBAL CORRECTION
 ###################################################################################
-@jit(nopython=True, parallel = True) # no big improvement here ~ 194 ms for 200 images
+@jit(nopython=True, parallel = True) # no big improvement here ~ 136 ms for 200 images
 def pad_array(images, offset):
     """
         Numba 0.42.0 does not support padding
@@ -561,13 +564,13 @@ def low_pass_filter_space(images, kernel, offset, h, w):
     
     return new_image
 
-@jit(nopython=True, parallel = True)
-def match_template(images, template, max_dev):
+# @numba.cuda.jit
+@jit(nopython=True)
+def match_template(images, template, max_dev, res_all):
     """ 
         Perform matching template similar to opencv
         with TM_CCOEFF_NORMED
-    """
-    res_all     = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1), dtype = np.float32)    
+    """    
     factor      = np.sum(np.power(template, 2.0))
     for i in range(images.shape[0]):        
         res = res_all[i]
@@ -576,7 +579,7 @@ def match_template(images, template, max_dev):
                 tmp = images[i,j:j+template.shape[0],k:k+template.shape[1]]
                 res[j,k] = np.sum(tmp*template)/np.sqrt(np.sum(np.power(tmp,2.0))*factor)
         
-    return res_all
+    return
 
 def estimate_shifts(res_all, max_loc, max_dev):
     """
@@ -610,6 +613,28 @@ def estimate_shifts(res_all, max_loc, max_dev):
         sh_y_n[~index] = -(max_loc[~index,0] - max_dev)
 
     return sh_x_n, sh_y_n
+
+def interpolate(new_ypos, new_xpos, image, xpos, ypos):
+    f = interp2d(new_ypos, new_xpos, image, kind = 'linear')
+    image = f(ypos, xpos)    
+    return image
+
+def warp_image(images, sh_x, sh_y):
+    """
+        Rigid shift + linear interpolation using scipy
+        x is horizontal
+        y is vertical
+    """
+    n, h, w = images.shape
+    xpos = np.arange(h)    
+    ypos = np.arange(w)
+
+    for i in range(n):
+        new_xpos = xpos + sh_x[i]
+        new_ypos = ypos + sh_y[i]
+        image = interpolate(new_ypos, new_xpos, images[i], xpos, ypos)
+        images[i] = image.astype(np.float32)
+    return images
 
 def global_correct(images, template, dims, max_dev, filter_size):
     """ 
@@ -645,7 +670,8 @@ def global_correct(images, template, dims, max_dev, filter_size):
 
     # match template
     filtered_template = np.squeeze(filtered_template, 0)
-    res_all = match_template(filtered_images, filtered_template, max_dev)
+    res_all     = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1))
+    match_template(filtered_images, filtered_template, max_dev, res_all)
     max_loc     = np.zeros((images.shape[0], 2), dtype = np.int)
     for i in range(images.shape[0]):
         res = res_all[i]
@@ -653,18 +679,11 @@ def global_correct(images, template, dims, max_dev, filter_size):
     t6 = time()
 
     # computing the shift    
-    sh_x_n, sh_y_n = estimate_shifts(res_all, max_loc, max_dev)
+    sh_x, sh_y = estimate_shifts(res_all, max_loc, max_dev)
     t7 = time()
 
-    # shifting the image
-    interpolation = cv2.INTER_LINEAR        
-    for i in range(images.shape[0]):
-        M   = np.float32([[1, 0, sh_y_n[i]], [0, 1, sh_x_n[i]]])
-        image = images[i]
-        min_, max_ = np.min(image), np.max(image)    
-        new_image = cv2.warpAffine(image, M, dims[::-1], flags = interpolation, borderMode=cv2.BORDER_REFLECT)         
-        new_image = np.clip(new_image, min_, max_)        
-        images[i] = new_image
+    # shifting the image    
+    images = warp_image(images, sh_x, sh_y)
     t8 = time()
 
     # flattening the images
