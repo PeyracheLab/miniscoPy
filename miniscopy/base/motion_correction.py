@@ -58,6 +58,7 @@ from numba import cuda
 from miniscopy.base.sima_functions import *
 from time import time
 from scipy.interpolate import interp2d
+from scipy.signal import fftconvolve
 import cupy as cp
 
 
@@ -514,6 +515,18 @@ def pad_array(images, offset):
         tmp[-offset:,0:offset] = image[-offset:,0:offset][::-1,::-1] # lower left corner
     return pad_images
 
+def pad_gpu(images, offset):
+    """
+        cupy.pad function
+        constant values
+    """
+    h = images.shape[1]
+    w = images.shape[2]
+    pad_images = cp.zeros((images.shape[0], h+2*offset, w+2*offset), dtype = np.float32)
+    for i in range(images.shape[0]):
+        pad_images[i] = cp.pad(images[0], offset, mode = 'reflect')
+    return pad_images
+
 @jit(nopython=True) # 6 microseconds versus 45 microseconds without
 def get_kernel(filter_size):
     """
@@ -542,28 +555,6 @@ def get_kernel(filter_size):
     return ker2D
 
 # @jit(nopython=True)#, parallel=True)
-# def low_pass_filter_space(images, kernel, offset, h, w):
-#     """ Filter a 2D image
-
-#     Parameters : 
-#     -img_orig : ndarray, the original image.
-#     -kernel
-    
-#     Return : 
-#     - filtered image
-
-#     """
-#     n = images.shape[0]
-#     pdims = (images.shape[1], images.shape[2])
-#     new_image = np.zeros((n, h, w), dtype = np.float32)
-#     for i in range(images.shape[0]):
-#         tmp1 = np.fft.rfftn(images[i], pdims) * np.fft.rfftn(kernel, pdims)
-#         tmp2 = np.fft.irfftn(tmp1)
-#         # tmp = scipy.signal.fftconvolve(images[i], kernel, mode = 'same')
-#         new_image[i] = tmp2[offset*2:,offset*2:]
-    
-#     return new_image
-
 def low_pass_filter_space(images, kernel, offset, h, w):
     """ Filter a 2D image
 
@@ -577,33 +568,68 @@ def low_pass_filter_space(images, kernel, offset, h, w):
     """
     n = images.shape[0]
     pdims = (images.shape[1], images.shape[2])
-    new_image = cp.zeros((n, h, w), dtype = np.float32)
+    new_image = np.zeros((n, h, w), dtype = np.float32)
     for i in range(images.shape[0]):
-        tmp1 = cp.fft.rfft2(images[i])
-        tmp2 = cp.fft.rfft2(kernel, pdims)
-        tmp3 = tmp1*tmp2
-        tmp4 = cp.fft.irfft2(tmp3)
+        tmp1 = np.fft.rfftn(images[i], pdims) * np.fft.rfftn(kernel, pdims)
+        tmp2 = np.fft.irfftn(tmp1)
         # tmp = scipy.signal.fftconvolve(images[i], kernel, mode = 'same')
-        new_image[i] = tmp4[offset*2:,offset*2:]
+        new_image[i] = tmp2[offset*2:,offset*2:]
     
     return new_image
 
-# @numba.cuda.jit
+# @cuda.jit
+def low_pass_filter_space_gpu(images, new_images, kernel, offset):
+    """ Filter a 2D image
+
+    Parameters : 
+    -img_orig : ndarray, the original image.
+    -kernel
+    
+    Return : 
+    - filtered image
+
+    """
+    pdims = (images.shape[1], images.shape[2])        
+    for i in range(images.shape[0]):
+        # stream = cp.cuda.stream.Stream()
+        # with stream:
+        tmp4 = cp.fft.irfft2(cp.fft.rfft2(images[i]) * cp.fft.rfft2(kernel, pdims))
+        new_images[i] = tmp4[offset*2:,offset*2:]
+        # stream.synchronize()
+    
+    return new_images
+
 @jit(nopython=True)
-def match_template(images, template, max_dev, res_all):
+def match_template(images, template, max_dev):
     """ 
         Perform matching template similar to opencv
         with TM_CCOEFF_NORMED
     """    
+    res_all = np.zeros((images.shape[0], max_dev*2+1, max_dev*2+1))
     factor      = np.sum(np.power(template, 2.0))
     for i in range(images.shape[0]):        
         res = res_all[i]
         for j in range(max_dev*2+1):
             for k in range(max_dev*2+1):
                 tmp = images[i,j:j+template.shape[0],k:k+template.shape[1]]
-                res[j,k] = np.sum(tmp*template)/np.sqrt(np.sum(np.power(tmp,2.0))*factor)
+                res[j,k] = np.sum(tmp*template)/np.sqrt(np.sum(np.power(tmp,2.0))*factor)        
+    return res_all
+
+def match_template_gpu(images, template, max_dev):
+    """ 
+        Perform matching template similar to opencv
+        with TM_CCOEFF_NORMED
+    """    
+    res_all     = cp.zeros((images.shape[0], max_dev*2+1, max_dev*2+1))
+    factor      = cp.sum(cp.power(template, 2.0))
+    for i in range(images.shape[0]):        
+        res     = res_all[i]
+        for j in range(max_dev*2+1):
+            for k in range(max_dev*2+1):
+                tmp         = images[i,j:j+template.shape[0],k:k+template.shape[1]]
+                res[j,k]    = cp.sum(tmp*template)/cp.sqrt(cp.sum(cp.power(tmp,2.0))*factor)
         
-    return
+    return 
 
 def estimate_shifts(res_all, max_loc, max_dev):
     """
