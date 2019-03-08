@@ -58,7 +58,7 @@ from numba import cuda
 from miniscopy.base.sima_functions import *
 from time import time
 from scipy.interpolate import interp2d
-
+import cupy as cp
 
 
 def get_vector_field_image (folder_name,shift_appli, parameters):
@@ -542,6 +542,28 @@ def get_kernel(filter_size):
     return ker2D
 
 # @jit(nopython=True)#, parallel=True)
+# def low_pass_filter_space(images, kernel, offset, h, w):
+#     """ Filter a 2D image
+
+#     Parameters : 
+#     -img_orig : ndarray, the original image.
+#     -kernel
+    
+#     Return : 
+#     - filtered image
+
+#     """
+#     n = images.shape[0]
+#     pdims = (images.shape[1], images.shape[2])
+#     new_image = np.zeros((n, h, w), dtype = np.float32)
+#     for i in range(images.shape[0]):
+#         tmp1 = np.fft.rfftn(images[i], pdims) * np.fft.rfftn(kernel, pdims)
+#         tmp2 = np.fft.irfftn(tmp1)
+#         # tmp = scipy.signal.fftconvolve(images[i], kernel, mode = 'same')
+#         new_image[i] = tmp2[offset*2:,offset*2:]
+    
+#     return new_image
+
 def low_pass_filter_space(images, kernel, offset, h, w):
     """ Filter a 2D image
 
@@ -555,12 +577,14 @@ def low_pass_filter_space(images, kernel, offset, h, w):
     """
     n = images.shape[0]
     pdims = (images.shape[1], images.shape[2])
-    new_image = np.zeros((n, h, w), dtype = np.float32)
+    new_image = cp.zeros((n, h, w), dtype = np.float32)
     for i in range(images.shape[0]):
-        tmp1 = np.fft.rfftn(images[i], pdims) * np.fft.rfftn(kernel, pdims)
-        tmp2 = np.fft.irfftn(tmp1)
+        tmp1 = cp.fft.rfft2(images[i])
+        tmp2 = cp.fft.rfft2(kernel, pdims)
+        tmp3 = tmp1*tmp2
+        tmp4 = cp.fft.irfft2(tmp3)
         # tmp = scipy.signal.fftconvolve(images[i], kernel, mode = 'same')
-        new_image[i] = tmp2[offset*2:,offset*2:]
+        new_image[i] = tmp4[offset*2:,offset*2:]
     
     return new_image
 
