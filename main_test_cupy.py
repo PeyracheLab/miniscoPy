@@ -1,6 +1,4 @@
 '''
-	Author: Elena Kerjean
-	Date : 18/06/2018
 
 	Test of the motion correction algorithm
 '''
@@ -19,22 +17,25 @@ from miniscopy.base.motion_correction import *
 import cupy as cp
 import scipy.signal
 # from miniscopy import setup_cluster, CNMFE
-# from miniscopy import Movie
+from miniscopy import Movie
+
 
 
 folder_name = 'example_movies'
-files = glob.glob(os.path.join(folder_name, '*msCam*.avi'))
+files = glob.glob(os.path.join(folder_name, '*.avi'))
 parameters = yaml.load(open(os.path.join(folder_name, 'parameters.yaml'), 'r'))
-parameters['motion_correction']['nb_round'] = 1
-fnames = files
+parameters['motion_correction']['nb_round'] = 2
+fnames = [files[0]]
 parameters = parameters['motion_correction']
 parameters['block_size'] = 200
 video_info, videos, dims = get_video_info(fnames)
 hdf_mov       = get_hdf_file(videos, video_info, dims, parameters['save_original'])
 
+
+
 # hdf_mov = hd.File('example_movies/motion_corrected.hdf5', 'r+')
 duration = hdf_mov['movie'].shape[0]
-dims = (480,752)
+
 
 t1 = time()
 template   = get_template(hdf_mov['movie'], dims, start = 0, duration = 500)
@@ -67,12 +68,12 @@ for r in range(parameters['nb_round']): # loop on the movie
 		template_crop   = template_crop[max_dev:-max_dev,max_dev:-max_dev]		
 		template_padded	= np.pad(template_crop, offset, mode = 'reflect')
 		filtered_template = scipy.signal.fftconvolve(template_padded, kernel, mode = 'same')
-		filtered_template = filtered_template[offset:-offset,offset:-offset]				
+		filtered_template = filtered_template[offset:-offset,offset:-offset]
 		t3 = time()
 
 		# padding the images
 		images = images.reshape(images.shape[0], dims[0], dims[1])
-		images_padded   = pad_gpu(images, offset)
+		images_padded = pad_gpu(images, offset)
 		t4 = time()
 
 		# filtering images
@@ -84,7 +85,7 @@ for r in range(parameters['nb_round']): # loop on the movie
 
 		# match template
 		filtered_template = cp.asarray(filtered_template)		
-		res_all = match_template_gpu(filtered_images, filtered_template, max_dev)		
+		res_all = match_template(filtered_images, filtered_template, max_dev)		
 		# max_loc     = np.zeros((images.shape[0], 2), dtype = np.int)
 		# for i in range(images.shape[0]):
 		#     res = res_all[i]
@@ -102,7 +103,20 @@ for r in range(parameters['nb_round']): # loop on the movie
 		# print("shifting the image", t8 - t7)
 		# print("reshaping ", t9 - t8)		
 
-		sys.exit()
+		
 
 print("Global motion correction", time()-t1)
 
+movie_corrected = data['movie'].value.reshape(1000,480,752)
+
+movie_original = data['original'].value.reshape(1000,480,752)
+
+movie_compare = np.hstack((movie_corrected, movie_original))
+
+mv = Movie(movie_compare)
+
+# TO CLOSE THE WINDOW, PRESS Q
+mv.play()
+
+#close the hdf file
+data.close()

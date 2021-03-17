@@ -629,7 +629,7 @@ def match_template_gpu(images, template, max_dev):
                 tmp         = images[i,j:j+template.shape[0],k:k+template.shape[1]]
                 res[j,k]    = cp.sum(tmp*template)/cp.sqrt(cp.sum(cp.power(tmp,2.0))*factor)
         
-    return 
+    return res_all
 
 def estimate_shifts(res_all, max_loc, max_dev):
     """
@@ -795,7 +795,7 @@ def get_video_info(files):
     video_info  = pd.DataFrame(index = np.arange(len(files)), columns = ['file_name', 'start', 'end', 'duration'])
     videos      = dict.fromkeys(files) # dictionnary creation
     for f in files:
-        num                                 = int(re.findall(r'\d+', f)[-1])-1 
+        num                                 = int(re.findall(r'\d+', f)[-1])
         video_info.loc[num,'file_name']     = f
         video                               = av.open(f)
         stream                              = next(s for s in video.streams if s.type == 'video') 
