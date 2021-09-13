@@ -6,9 +6,6 @@ miniscoPy
 
 A package to analyse calcium imaging data recorded with the __[Miniscope](http://miniscope.org)__. 
 
-(EDIT 09/05/2021 : This package is not maintained anymore. Compatibility issues between python package might arise.)
-
-
 * miniscoPy is a Python 3 implementation of CNMF-E, an efficient algorithm to deconvolve calcium transients ([Zhou et al, 2016](https://pdfs.semanticscholar.org/0c68/5753c9379f71b5120fe3b51589458c4de695.pdf)).
 * It is based on the [CaImAn package](https://github.com/flatironinstitute/CaImAn). The CaImAn package is a versatile tool that can do several things (two photons, one photons, online analysis, etc). Here, the main idea is to have a simple package for straightforward analysis of Miniscope data with CNMF-E.
 * __What does it do?__
