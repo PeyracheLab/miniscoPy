@@ -3,6 +3,8 @@
 miniscoPy
 =====
 
+__(This package is not maintained anymore. Compatibility issues between python package might arise.)__
+
 
 A package to analyse calcium imaging data recorded with the __[Miniscope](http://miniscope.org)__. 
 
